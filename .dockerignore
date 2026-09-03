@@ -1,0 +1,18 @@
+# Exclui do contexto de build tudo que e local, sensivel ou desnecessario.
+.venv/
+.git/
+__pycache__/
+*.py[codz]
+.env
+.streamlit/secrets.toml
+var/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage*
+tests/
+docs/
+.github/
+AGENTS.md
+TASKS.md

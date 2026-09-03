@@ -1,0 +1,28 @@
+# Sobe o atendimento Banco Agil com dados mutaveis em volumes nomeados.
+# Os volumes sao inicializados com o conteudo da imagem e sobrevivem a
+# recriacao do conteiner. Nenhum segredo e versionado aqui: informe
+# BANCO_AGIL_GROQ_API_KEY no ambiente quando quiser habilitar o LLM
+# (sem chave, os fluxos deterministicos continuam funcionando).
+name: banco-agil
+
+services:
+  app:
+    build: .
+    ports:
+      - "8501:8501"
+    environment:
+      BANCO_AGIL_DATA_DIR: /srv/banco-agil/data
+      BANCO_AGIL_VAR_DIR: /srv/banco-agil/var
+    volumes:
+      - banco-agil-data:/srv/banco-agil/data
+      - banco-agil-var:/srv/banco-agil/var
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://localhost:8501/_stcore/health').status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+volumes:
+  banco-agil-data:
+  banco-agil-var:
