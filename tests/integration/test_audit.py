@@ -2,6 +2,7 @@
 
 import logging
 import sqlite3
+from contextlib import closing
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -142,11 +143,8 @@ def _service(
 
 
 def _raw_rows(path: Path) -> str:
-    connection = sqlite3.connect(path)
-    try:
+    with closing(sqlite3.connect(path)) as connection:
         rows = connection.execute("SELECT * FROM audit_events").fetchall()
-    finally:
-        connection.close()
     return str(rows)
 
 

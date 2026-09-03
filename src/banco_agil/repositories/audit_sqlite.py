@@ -1,6 +1,7 @@
 """Auditoria tecnica em SQLite, sem dados pessoais ou financeiros."""
 
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from typing import cast
 
@@ -57,7 +58,7 @@ class AuditSqliteRepository:
             RepositoryError: Se o banco nao puder ser atualizado.
         """
         try:
-            with sqlite3.connect(self._path) as connection:
+            with closing(sqlite3.connect(self._path)) as connection:
                 connection.execute(_CREATE_TABLE)
                 connection.execute(_CREATE_INDEX)
                 connection.execute(
@@ -80,7 +81,7 @@ class AuditSqliteRepository:
             RepositoryError: Se o banco nao puder ser lido.
         """
         try:
-            with sqlite3.connect(self._path) as connection:
+            with closing(sqlite3.connect(self._path)) as connection:
                 connection.row_factory = sqlite3.Row
                 rows = connection.execute(
                     "SELECT"
