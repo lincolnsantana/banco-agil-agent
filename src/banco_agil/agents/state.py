@@ -47,6 +47,7 @@ class ConversationState(BaseModel):
     pending_birth_date: date | None = Field(default=None, repr=False)
     authenticated_client: Client | None = Field(default=None, repr=False)
     requested_limit: PositiveMoney | None = Field(default=None, repr=False)
+    credit_reanalysis_pending: bool = False
     interview_draft: CreditInterviewDraft = Field(
         default_factory=CreditInterviewDraft,
         repr=False,
@@ -76,3 +77,11 @@ class ConversationState(BaseModel):
             "ended": self.ended,
             "end_reason": self.end_reason.value if self.end_reason else None,
         }
+
+    def end(self, reason: EndReason) -> None:
+        """Marca o atendimento como encerrado preservando a invariante do estado."""
+        validated = type(self).model_validate(
+            self.model_dump() | {"ended": True, "end_reason": reason}
+        )
+        object.__setattr__(self, "ended", validated.ended)
+        object.__setattr__(self, "end_reason", validated.end_reason)

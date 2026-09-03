@@ -184,5 +184,6 @@ def test_complete_interview_updates_score_and_returns_to_credit(
     assert repository.updates == [("01234567890", 505)]
     assert state.authenticated_client is repository.client
     assert state.active_agent is Agent.CREDIT
+    assert state.credit_reanalysis_pending
     assert state.requested_limit == Decimal("5000.00")
     assert state.interview_draft == CreditInterviewDraft()
