@@ -24,3 +24,7 @@ class Settings(BaseSettings):
     awesomeapi_base_url: str = "https://economia.awesomeapi.com.br"
     data_dir: Path = Path("data")
     var_dir: Path = Path("var")
+    conversation_checkpoint_path: Path | None = Field(
+        default=None,
+        description="SQLite opcional para checkpoints de sessão; None desabilita.",
+    )

@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from langchain_core.messages import BaseMessage, HumanMessage
 
-from banco_agil.agents.graph import ConversationGraph
+from banco_agil.agents.graph import ConversationGraph, SessionCheckpointStore
 from banco_agil.agents.router import GraphState
 from banco_agil.agents.state import ConversationState
 from banco_agil.domain.enums import Agent, AuditEventType
@@ -50,11 +50,13 @@ class ConversationService:
         turn_id_factory: Callable[[], str] = _new_turn_id,
         *,
         audit_store: AuditSqliteRepository | None = None,
+        checkpoint_store: SessionCheckpointStore | None = None,
     ) -> None:
-        """Recebe grafo compilado, gerador de IDs e auditoria opcional."""
+        """Recebe grafo compilado, gerador de IDs e integracoes opcionais."""
         self.graph = graph
         self._turn_id_factory = turn_id_factory
         self._audit_store = audit_store
+        self._checkpoint_store = checkpoint_store
 
     def handle_turn(
         self,
@@ -133,6 +135,10 @@ class ConversationService:
             final_type = AuditEventType.FINISHED
             final_result = "ok"
         self._record(event_session_id, final_type, to_agent, final_result, duration_ms)
+        if session_id is not None:
+            self._save_checkpoint(
+                session_id, result["conversation"], result["messages"]
+            )
         _logger.info(
             "turn finished",
             extra={
@@ -150,6 +156,45 @@ class ConversationService:
             history=tuple(result["messages"]),
             reply=result["reply"],
         )
+
+    def load_session(
+        self, session_id: str
+    ) -> tuple[ConversationState, list[BaseMessage]] | None:
+        """Restaura estado e historico validos, ou None quando ausentes.
+
+        Sem store configurado, sempre retorna None. Checkpoints corrompidos
+        geram `RepositoryError` em vez de estado parcial.
+
+        Raises:
+            RepositoryError: Se o checkpoint existir mas for invalido.
+        """
+        if self._checkpoint_store is None:
+            return None
+        return self._checkpoint_store.load(session_id)
+
+    def clear_session(self, session_id: str) -> None:
+        """Remove o checkpoint da sessao; sem store, nao faz nada.
+
+        Raises:
+            RepositoryError: Se o banco nao puder ser atualizado.
+        """
+        if self._checkpoint_store is None:
+            return
+        self._checkpoint_store.clear(session_id)
+
+    def _save_checkpoint(
+        self,
+        session_id: str,
+        state: ConversationState,
+        history: Sequence[BaseMessage],
+    ) -> None:
+        """Persiste o checkpoint sem permitir que falhas afetem o turno."""
+        if self._checkpoint_store is None:
+            return
+        try:
+            self._checkpoint_store.save(session_id, state, history)
+        except Exception:
+            _logger.warning("session checkpoint failed")
 
     def _record(
         self,

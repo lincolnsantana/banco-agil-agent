@@ -1,10 +1,23 @@
 """Montagem do LangGraph com dependencias bancarias injetadas."""
 
+import json
+import sqlite3
+from collections.abc import Sequence
+from contextlib import closing
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    messages_from_dict,
+    messages_to_dict,
+)
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
+from pydantic import ValidationError
 
 from banco_agil.agents.credit import handle_credit
 from banco_agil.agents.credit_interview import handle_credit_interview
@@ -16,8 +29,10 @@ from banco_agil.agents.router import (
     route_after_triage,
     route_entry,
 )
+from banco_agil.agents.state import ConversationState
 from banco_agil.agents.triage import handle_triage
 from banco_agil.domain.enums import Agent
+from banco_agil.domain.exceptions import RepositoryError
 from banco_agil.integrations.llm import StructuredLlm
 from banco_agil.services.authentication import AuthenticationService
 from banco_agil.services.credit import CreditService
@@ -25,6 +40,15 @@ from banco_agil.services.credit_interview import CreditInterviewService
 from banco_agil.services.exchange import ExchangeService
 
 ConversationGraph = CompiledStateGraph[GraphState, None, GraphState, GraphState]
+
+_CREATE_CHECKPOINTS = """
+CREATE TABLE IF NOT EXISTS checkpoints (
+    session_id TEXT PRIMARY KEY,
+    conversation TEXT NOT NULL,
+    history TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+)
+"""
 
 
 @dataclass(frozen=True)
@@ -36,6 +60,104 @@ class GraphDependencies:
     credit_interview: CreditInterviewService
     exchange: ExchangeService
     llm: StructuredLlm | None = None
+
+
+class SessionCheckpointStore:
+    """Persiste conversa e historico recentes por sessao em SQLite local.
+
+    Guarda somente o necessario para continuar o atendimento apos reinicio:
+    o estado validado e as mensagens recentes. Texto livre do turno em
+    andamento, identificadores e respostas intermediarias ficam de fora.
+
+    Retencao e limpeza: o arquivo e local (sugestao: `var/` do Settings,
+    ignorado pelo Git) e nao expira sozinho; remova sessoes encerradas com
+    `clear()` e apague o arquivo para purga total. Falhas de leitura de
+    dados corrompidos e de acesso ao banco viram `RepositoryError`.
+    """
+
+    def __init__(self, path: Path) -> None:
+        """Configura o caminho do banco sem realizar acesso imediato."""
+        self._path = path
+
+    def save(
+        self,
+        session_id: str,
+        state: ConversationState,
+        history: Sequence[BaseMessage],
+    ) -> None:
+        """Substitui o checkpoint da sessao pelos dados atuais.
+
+        Raises:
+            RepositoryError: Se o banco nao puder ser atualizado.
+        """
+        payload = (
+            session_id,
+            json.dumps(state.model_dump(mode="json"), ensure_ascii=False),
+            json.dumps(messages_to_dict(list(history)), ensure_ascii=False),
+            datetime.now(UTC).isoformat(),
+        )
+        try:
+            with closing(sqlite3.connect(self._path)) as connection:
+                connection.execute(_CREATE_CHECKPOINTS)
+                connection.execute(
+                    "INSERT OR REPLACE INTO checkpoints"
+                    " (session_id, conversation, history, updated_at)"
+                    " VALUES (?, ?, ?, ?)",
+                    payload,
+                )
+                connection.commit()
+        except (OSError, sqlite3.Error, ValueError, TypeError) as error:
+            raise RepositoryError("session checkpoint could not be saved") from error
+
+    def load(
+        self, session_id: str
+    ) -> tuple[ConversationState, list[BaseMessage]] | None:
+        """Retorna estado e historico validos, ou None quando ausentes.
+
+        Raises:
+            RepositoryError: Se o banco falhar ou o checkpoint for invalido.
+        """
+        try:
+            with closing(sqlite3.connect(self._path)) as connection:
+                connection.execute(_CREATE_CHECKPOINTS)
+                connection.commit()
+                row = connection.execute(
+                    "SELECT conversation, history FROM checkpoints"
+                    " WHERE session_id = ?",
+                    (session_id,),
+                ).fetchone()
+        except (OSError, sqlite3.Error) as error:
+            raise RepositoryError("session checkpoint could not be read") from error
+        if row is None:
+            return None
+        try:
+            state = ConversationState.model_validate(json.loads(row[0]))
+            history = messages_from_dict(json.loads(row[1]))
+        except (
+            ValueError,
+            TypeError,
+            KeyError,
+            AttributeError,
+            ValidationError,
+        ) as error:
+            raise RepositoryError("session checkpoint is invalid") from error
+        return state, history
+
+    def clear(self, session_id: str) -> None:
+        """Remove o checkpoint da sessao, sem falhar quando ausente.
+
+        Raises:
+            RepositoryError: Se o banco nao puder ser atualizado.
+        """
+        try:
+            with closing(sqlite3.connect(self._path)) as connection:
+                connection.execute(_CREATE_CHECKPOINTS)
+                connection.execute(
+                    "DELETE FROM checkpoints WHERE session_id = ?", (session_id,)
+                )
+                connection.commit()
+        except (OSError, sqlite3.Error) as error:
+            raise RepositoryError("session checkpoint could not be cleared") from error
 
 
 def build_graph(dependencies: GraphDependencies) -> ConversationGraph:
