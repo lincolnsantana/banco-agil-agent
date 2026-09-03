@@ -74,7 +74,7 @@ class CreditInterviewService:
             AuthorizationError: Se nao houver cliente autenticado.
             DomainError: Se faltar consentimento ou a resposta for invalida.
         """
-        client = self._require_eligible_state(state)
+        self._require_eligible_state(state)
         draft = state.interview_draft
         if not draft.consent_given:
             raise DomainError("credit interview requires consent")
@@ -93,21 +93,24 @@ class CreditInterviewService:
             elif current_field is InterviewField.DEPENDENTS:
                 draft.dependents = _parse_dependents(answer)
             else:
-                return self._complete(state, client, _parse_active_debts(answer))
+                return self._complete(state, _parse_active_debts(answer))
         except (InvalidOperation, ValueError) as error:
             raise DomainError("invalid interview answer") from error
 
         return InterviewProgress(next_field=self._next_field(draft))
 
-    def _complete(
+    def update_credit_score(
         self,
         state: ConversationState,
-        client: Client,
-        has_active_debts: bool,
-    ) -> InterviewProgress:
-        interview = CreditInterview.model_validate(
-            state.interview_draft.model_dump() | {"has_active_debts": has_active_debts}
-        )
+        interview: CreditInterview,
+    ) -> ScoreUpdateResult:
+        """Calcula e persiste o score de uma entrevista completa e validada.
+
+        Raises:
+            AuthorizationError: Se nao houver cliente autenticado.
+            DomainError: Se nao existir limite rejeitado para reanalise.
+        """
+        client = self._require_eligible_state(state)
         new_score = calculate_credit_score(interview)
         updated_client = self._client_repository.update_credit_score(
             client.cpf,
@@ -116,12 +119,23 @@ class CreditInterviewService:
         state.authenticated_client = updated_client
         state.interview_draft = CreditInterviewDraft()
         state.active_agent = Agent.CREDIT
+        return ScoreUpdateResult(
+            previous_score=client.credit_score,
+            new_score=updated_client.credit_score,
+        )
+
+    def _complete(
+        self,
+        state: ConversationState,
+        has_active_debts: bool,
+    ) -> InterviewProgress:
+        interview = CreditInterview.model_validate(
+            state.interview_draft.model_dump() | {"has_active_debts": has_active_debts}
+        )
+        score_update = self.update_credit_score(state, interview)
         return InterviewProgress(
             next_field=None,
-            score_update=ScoreUpdateResult(
-                previous_score=client.credit_score,
-                new_score=updated_client.credit_score,
-            ),
+            score_update=score_update,
         )
 
     @staticmethod
