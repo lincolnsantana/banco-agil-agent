@@ -6,7 +6,13 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from banco_agil.domain.enums import CreditRequestStatus, EmploymentType, EndReason
+from banco_agil.domain.enums import (
+    Agent,
+    AuditEventType,
+    CreditRequestStatus,
+    EmploymentType,
+    EndReason,
+)
 
 Cpf = Annotated[str, Field(pattern=r"^\d{11}$")]
 Money = Annotated[Decimal, Field(ge=Decimal("0"), allow_inf_nan=False)]
@@ -140,3 +146,25 @@ class EndServiceResult(DomainModel):
 
     ended: Literal[True] = True
     reason: EndReason
+
+
+class AuditEvent(DomainModel):
+    """Evento tecnico de auditoria, sem texto do usuario ou resposta."""
+
+    session_id: Annotated[str, Field(min_length=1)]
+    event_type: AuditEventType
+    agent: Agent | None = None
+    result: Annotated[str, Field(min_length=1)]
+    duration_ms: Annotated[float, Field(ge=0)] | None = None
+    model: Annotated[str, Field(min_length=1)] | None = None
+    prompt_version: Annotated[str, Field(min_length=1)] | None = None
+    llm_calls: Annotated[int, Field(ge=0)] | None = None
+    input_tokens: Annotated[int, Field(ge=0)] | None = None
+    output_tokens: Annotated[int, Field(ge=0)] | None = None
+    created_at: datetime
+
+    @field_validator("created_at")
+    @classmethod
+    def normalize_created_at(cls, value: datetime) -> datetime:
+        """Normaliza timestamps conscientes para UTC."""
+        return _as_utc(value)

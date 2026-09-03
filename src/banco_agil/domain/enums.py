@@ -45,3 +45,14 @@ class EndReason(StrEnum):
     USER_REQUEST = "user_request"
     AUTHENTICATION_FAILURES = "authentication_failures"
     COMPLETED = "completed"
+
+
+class AuditEventType(StrEnum):
+    """Etapa tecnica registrada pela auditoria, sem dados pessoais."""
+
+    STARTED = "started"
+    TRANSITION = "transition"
+    INTEGRATION = "integration"
+    ERROR = "error"
+    FINISHED = "finished"
+    ENDED = "ended"
