@@ -1,0 +1,22 @@
+# Valida qualidade e testes sem chave de LLM e sem servicos externos.
+# Os testes usam mocks e fixtures temporarias; nenhuma etapa acessa
+# AwesomeAPI, Groq ou outro servico de rede.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: ruff format --check .
+      - run: ruff check .
+      - run: mypy src
+      - run: pytest --cov=src/banco_agil --cov-report=term-missing
