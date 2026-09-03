@@ -1,9 +1,10 @@
 """No de triagem com autenticacao e roteamento deterministico primeiro."""
 
 import re
+from collections.abc import Sequence
 from datetime import date
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from pydantic import BaseModel
 
 from banco_agil.agents._shared import (
@@ -35,6 +36,7 @@ def handle_triage(
     *,
     llm: StructuredLlm | None = None,
     turn_id: str = "",
+    recent_messages: Sequence[BaseMessage] = (),
 ) -> str:
     """Processa um turno de triagem e atualiza o estado confiavel."""
     end_reply = end_reply_if_requested(state, user_text)
@@ -57,6 +59,7 @@ def handle_triage(
                 turn_id,
                 [
                     rendered.system_message,
+                    *_sanitized_history(recent_messages),
                     HumanMessage(content=safe_user_text),
                 ],
                 IntentDecision,
@@ -135,3 +138,15 @@ def _deterministic_intent(user_text: str) -> Intent | None:
     if "limite" in normalized:
         return Intent.CREDIT_LIMIT
     return None
+
+
+def _sanitized_history(messages: Sequence[BaseMessage]) -> list[BaseMessage]:
+    sanitized: list[BaseMessage] = []
+    for message in messages[-6:]:
+        if isinstance(message, HumanMessage):
+            safe_content = sanitize_user_text(str(message.content))
+            if safe_content:
+                sanitized.append(HumanMessage(content=safe_content))
+        elif isinstance(message, AIMessage) and isinstance(message.content, str):
+            sanitized.append(AIMessage(content=message.content))
+    return sanitized

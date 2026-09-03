@@ -1,0 +1,86 @@
+"""Rotas condicionais e limites de passos do grafo conversacional."""
+
+from typing import Literal, TypedDict
+
+from langchain_core.messages import BaseMessage
+
+from banco_agil.agents.state import ConversationState
+from banco_agil.domain.enums import Agent
+
+MAX_HANDLER_STEPS = 2
+NodeRoute = Literal[
+    "triage",
+    "credit",
+    "credit_interview",
+    "exchange",
+    "limit_guard",
+    "finalize",
+]
+
+
+class GraphState(TypedDict):
+    """Estado interno de uma execucao de turno no LangGraph."""
+
+    conversation: ConversationState
+    messages: list[BaseMessage]
+    user_text: str
+    turn_id: str
+    reply: str
+    step_count: int
+
+
+class GraphUpdate(TypedDict, total=False):
+    """Atualizacao parcial produzida por um no do grafo."""
+
+    conversation: ConversationState
+    messages: list[BaseMessage]
+    reply: str
+    step_count: int
+
+
+def route_entry(state: GraphState) -> NodeRoute:
+    """Seleciona o primeiro no impondo encerramento e autenticacao."""
+    if state["conversation"].ended:
+        return "finalize"
+    if state["step_count"] >= MAX_HANDLER_STEPS:
+        return "limit_guard"
+    if not state["conversation"].authenticated:
+        return "triage"
+    return _route_for_agent(state["conversation"].active_agent)
+
+
+def route_after_triage(state: GraphState) -> NodeRoute:
+    """Continua no mesmo turno apenas para uma operacao ja identificada."""
+    if state["conversation"].ended:
+        return "finalize"
+    if state["step_count"] >= MAX_HANDLER_STEPS:
+        return "limit_guard"
+    if state["conversation"].authenticated:
+        active_agent = state["conversation"].active_agent
+        if active_agent in {Agent.CREDIT, Agent.EXCHANGE}:
+            return _route_for_agent(active_agent)
+    return "finalize"
+
+
+def route_after_interview(state: GraphState) -> NodeRoute:
+    """Encaminha entrevista concluida para reanalise imediata de credito."""
+    if state["conversation"].ended:
+        return "finalize"
+    if state["step_count"] >= MAX_HANDLER_STEPS:
+        return "limit_guard"
+    if (
+        state["conversation"].active_agent is Agent.CREDIT
+        and state["conversation"].credit_reanalysis_pending
+    ):
+        return "credit"
+    return "finalize"
+
+
+def _route_for_agent(agent: Agent) -> NodeRoute:
+    if agent is Agent.CREDIT:
+        return "credit"
+    if agent is Agent.CREDIT_INTERVIEW:
+        return "credit_interview"
+    if agent is Agent.EXCHANGE:
+        return "exchange"
+    return "triage"
