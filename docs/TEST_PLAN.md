@@ -34,7 +34,7 @@ que o pedido foi registrado sem alterar o limite cadastrado. Uma linha
 ## CT03 — Rejeição, entrevista e reanálise
 
 1. Autentique-se.
-2. Envie `quero aumentar` e depois `9000`.
+2. Envie `quero aumentar` e depois `15000` (acima do teto de 10.000 do score 700).
 3. Confirme a entrevista com `sim`.
 4. Responda `20000`, `formal`, `1000`, `0`, `não`.
 
