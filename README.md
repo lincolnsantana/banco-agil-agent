@@ -113,7 +113,8 @@ Pré-requisitos: Python 3.12+.
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-cp .env.example .env   # opcional; sem GROQ_API_KEY os fluxos seguem determinísticos
+cp .env.example .env
+# edite .env e preencha BANCO_AGIL_GROQ_API_KEY para ativar o Groq
 ```
 
 Interface (dados fictícios: CPF `11144477735`, nascimento `1990-05-20`):
@@ -121,6 +122,13 @@ Interface (dados fictícios: CPF `11144477735`, nascimento `1990-05-20`):
 ```bash
 streamlit run app.py
 ```
+
+A interface informa no topo se o Groq está ativo e qual modelo foi carregado.
+Sem `BANCO_AGIL_GROQ_API_KEY`, ela sinaliza **Modo determinístico**: nesse modo,
+nenhuma chamada ao provedor é realizada. Mesmo com Groq ativo, regras bancárias,
+autenticação, cálculos e intents evidentes continuam determinísticos; o modelo é
+consultado somente para interpretar intenções ambíguas, limitado a uma chamada
+por turno.
 
 Roteiro na UI: informe o CPF → informe o nascimento → `qual é meu limite?`
 (`R$ 2.500,00`) → `quero aumentar meu limite` → `4000` → `Encerrar atendimento`

@@ -107,6 +107,17 @@ def build_conversation_service(settings: Settings) -> ConversationService:
     return ConversationService(build_graph(dependencies))
 
 
+def llm_status_message(settings: Settings) -> str:
+    """Descreve o modo conversacional sem expor a credencial configurada."""
+    api_key = settings.groq_api_key
+    if api_key is not None and api_key.get_secret_value().strip():
+        return f"Groq ativo para intenções ambíguas — modelo {settings.groq_model}."
+    return (
+        "Modo determinístico: Groq inativo. Configure "
+        "BANCO_AGIL_GROQ_API_KEY no arquivo .env e reinicie a aplicação."
+    )
+
+
 def submit_user_message(
     session: MutableMapping[str, object],
     service: ConversationServiceLike,
@@ -169,6 +180,8 @@ def main() -> None:
     """Renderiza o chat e encaminha cada entrada ao serviço de conversa."""
     st.set_page_config(page_title="Banco Ágil", page_icon="🏦")
     st.title("Banco Ágil — Atendimento")
+    settings = Settings()
+    st.caption(llm_status_message(settings))
     session = cast(MutableMapping[str, object], st.session_state)
     init_session(session)
     service = _get_service()
