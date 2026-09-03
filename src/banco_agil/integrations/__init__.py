@@ -1,0 +1,1 @@
+"""Adaptadores para servicos externos."""
