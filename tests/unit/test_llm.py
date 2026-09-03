@@ -142,7 +142,9 @@ def test_fake_llm_rejects_invalid_structured_output() -> None:
 
 def test_fake_llm_blocks_second_call_in_same_turn() -> None:
     fake = FakeStructuredLlm({"intent": "other"})
+    assert not fake.was_called("turn-1")
     fake.invoke_structured("turn-1", [], IntentOutput)
+    assert fake.was_called("turn-1")
 
     with pytest.raises(LlmCallLimitError):
         fake.invoke_structured("turn-1", [], IntentOutput)
@@ -161,14 +163,16 @@ def test_groq_adapter_applies_configuration_and_records_usage(
     adapter = GroqStructuredLlm(build_settings(), metrics_recorder=recorder)
     messages = [HumanMessage(content="Preciso de ajuda")]
 
+    assert not adapter.was_called("turn-1")
     result = adapter.invoke_structured(
         "turn-1",
         messages,
         IntentOutput,
-        prompt_version="triage:1.1.0",
+        prompt_version="triage:1.2.0",
     )
 
     assert result.intent is Intent.CREDIT_LIMIT
+    assert adapter.was_called("turn-1")
     assert FakeChatGroq.init_kwargs == {
         "api_key": SecretStr("test-key"),
         "model": "llama-3.3-70b-versatile",
@@ -184,7 +188,7 @@ def test_groq_adapter_applies_configuration_and_records_usage(
     assert recorder.calls[0].duration_ms == 250.0
     assert recorder.calls[0].input_tokens == 12
     assert recorder.calls[0].output_tokens == 3
-    assert recorder.calls[0].prompt_version == "triage:1.1.0"
+    assert recorder.calls[0].prompt_version == "triage:1.2.0"
     assert recorder.calls[0].succeeded
 
 

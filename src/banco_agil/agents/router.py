@@ -14,6 +14,7 @@ NodeRoute = Literal[
     "credit_interview",
     "exchange",
     "limit_guard",
+    "humanize",
     "finalize",
 ]
 
@@ -26,6 +27,7 @@ class GraphState(TypedDict):
     user_text: str
     turn_id: str
     reply: str
+    responding_agent: Agent | None
     step_count: int
 
 
@@ -35,6 +37,7 @@ class GraphUpdate(TypedDict, total=False):
     conversation: ConversationState
     messages: list[BaseMessage]
     reply: str
+    responding_agent: Agent | None
     step_count: int
 
 
@@ -59,7 +62,7 @@ def route_after_triage(state: GraphState) -> NodeRoute:
         active_agent = state["conversation"].active_agent
         if active_agent in {Agent.CREDIT, Agent.EXCHANGE}:
             return _route_for_agent(active_agent)
-    return "finalize"
+    return "humanize"
 
 
 def route_after_interview(state: GraphState) -> NodeRoute:
@@ -73,7 +76,7 @@ def route_after_interview(state: GraphState) -> NodeRoute:
         and state["conversation"].credit_reanalysis_pending
     ):
         return "credit"
-    return "finalize"
+    return "humanize"
 
 
 def _route_for_agent(agent: Agent) -> NodeRoute:

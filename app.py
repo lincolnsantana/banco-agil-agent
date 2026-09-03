@@ -111,7 +111,8 @@ def llm_status_message(settings: Settings) -> str:
     """Descreve o modo conversacional sem expor a credencial configurada."""
     api_key = settings.groq_api_key
     if api_key is not None and api_key.get_secret_value().strip():
-        return f"Groq ativo para intenções ambíguas — modelo {settings.groq_model}."
+        model = settings.groq_model
+        return f"Groq ativo para humanização e intenções ambíguas — modelo {model}."
     return (
         "Modo determinístico: Groq inativo. Configure "
         "BANCO_AGIL_GROQ_API_KEY no arquivo .env e reinicie a aplicação."

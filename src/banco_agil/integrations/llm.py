@@ -39,6 +39,10 @@ class StructuredLlm(Protocol):
         """Executa no maximo uma chamada por turno e valida a resposta."""
         ...
 
+    def was_called(self, turn_id: str) -> bool:
+        """Informa se o orçamento do turno já foi consumido."""
+        ...
+
 
 class _TurnCallBudget:
     def __init__(self) -> None:
@@ -51,6 +55,9 @@ class _TurnCallBudget:
             raise LlmCallLimitError("LLM call budget already consumed for this turn")
         self._consumed_turns.add(turn_id)
 
+    def was_consumed(self, turn_id: str) -> bool:
+        return turn_id in self._consumed_turns
+
 
 class FakeStructuredLlm:
     """Fake deterministico que valida respostas sem rede ou credencial."""
@@ -59,6 +66,10 @@ class FakeStructuredLlm:
         """Configura a mesma resposta bruta para todos os turnos."""
         self._response = response
         self._budget = _TurnCallBudget()
+
+    def was_called(self, turn_id: str) -> bool:
+        """Informa se este fake já consumiu o turno."""
+        return self._budget.was_consumed(turn_id)
 
     def invoke_structured(
         self,
@@ -100,6 +111,10 @@ class GroqStructuredLlm:
         )
         self._metrics_recorder = metrics_recorder or NullLlmMetricsRecorder()
         self._budget = _TurnCallBudget()
+
+    def was_called(self, turn_id: str) -> bool:
+        """Informa se o adaptador já consumiu o turno."""
+        return self._budget.was_consumed(turn_id)
 
     def invoke_structured(
         self,

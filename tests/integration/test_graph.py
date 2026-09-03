@@ -112,6 +112,11 @@ class RecordingLlm:
 
     response: object
     calls: list[list[BaseMessage]] = field(default_factory=list)
+    called_turns: set[str] = field(default_factory=set)
+
+    def was_called(self, turn_id: str) -> bool:
+        """Informa se o turno já foi registrado."""
+        return turn_id in self.called_turns
 
     def invoke_structured(
         self,
@@ -122,7 +127,8 @@ class RecordingLlm:
         prompt_version: str | None = None,
     ) -> OutputModel:
         """Valida a resposta configurada."""
-        del turn_id, prompt_version
+        del prompt_version
+        self.called_turns.add(turn_id)
         self.calls.append(messages)
         return output_schema.model_validate(self.response)
 
@@ -197,6 +203,20 @@ def test_triage_routes_to_credit_and_returns_final_reply_in_same_turn(
     assert len(turn.history) == 2
     assert isinstance(turn.history[0], HumanMessage)
     assert isinstance(turn.history[1], AIMessage)
+
+
+def test_clear_request_is_humanized_after_business_response(client: Client) -> None:
+    llm = RecordingLlm({"opening": "Claro, vou contextualizar para você."})
+    harness = build_harness(client, llm)
+    state = ConversationState(authenticated_client=client)
+
+    turn = harness.service.handle_turn(state, (), "qual é meu limite?")
+
+    assert turn.reply.startswith("Claro, vou contextualizar para você.")
+    assert "2.500,00" in turn.reply
+    assert len(llm.calls) == 1
+    assert "2.500,00" not in str(llm.calls[0])
+    assert "Escopo: consultar limite" in str(llm.calls[0][0].content)
 
 
 def test_triage_routes_to_exchange_in_same_turn(client: Client) -> None:

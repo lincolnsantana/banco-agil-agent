@@ -19,6 +19,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import ValidationError
 
+from banco_agil.agents._shared import humanize_reply
 from banco_agil.agents.credit import handle_credit
 from banco_agil.agents.credit_interview import handle_credit_interview
 from banco_agil.agents.exchange import handle_exchange
@@ -175,7 +176,7 @@ def build_graph(dependencies: GraphDependencies) -> ConversationGraph:
             turn_id=state["turn_id"],
             recent_messages=_previous_messages(state),
         )
-        return _handler_update(state, reply)
+        return _handler_update(state, reply, Agent.TRIAGE)
 
     def credit_node(state: GraphState) -> GraphUpdate:
         reply = handle_credit(
@@ -183,7 +184,7 @@ def build_graph(dependencies: GraphDependencies) -> ConversationGraph:
             state["user_text"],
             dependencies.credit,
         )
-        return _handler_update(state, reply)
+        return _handler_update(state, reply, Agent.CREDIT)
 
     def interview_node(state: GraphState) -> GraphUpdate:
         reply = handle_credit_interview(
@@ -191,7 +192,7 @@ def build_graph(dependencies: GraphDependencies) -> ConversationGraph:
             state["user_text"],
             dependencies.credit_interview,
         )
-        return _handler_update(state, reply)
+        return _handler_update(state, reply, Agent.CREDIT_INTERVIEW)
 
     def exchange_node(state: GraphState) -> GraphUpdate:
         reply = handle_exchange(
@@ -199,29 +200,44 @@ def build_graph(dependencies: GraphDependencies) -> ConversationGraph:
             state["user_text"],
             dependencies.exchange,
         )
-        return _handler_update(state, reply)
+        return _handler_update(state, reply, Agent.EXCHANGE)
+
+    def humanize_node(state: GraphState) -> GraphUpdate:
+        reply = humanize_reply(
+            state["conversation"],
+            state["reply"],
+            dependencies.llm,
+            state["turn_id"],
+            responding_agent=state.get("responding_agent"),
+            recent_messages=_previous_messages(state),
+            user_text=state["user_text"],
+        )
+        return {"reply": reply}
 
     builder.add_node("triage", triage_node)
     builder.add_node("credit", credit_node)
     builder.add_node("credit_interview", interview_node)
     builder.add_node("exchange", exchange_node)
+    builder.add_node("humanize", humanize_node)
     builder.add_node("limit_guard", _limit_guard)
     builder.add_node("finalize", _finalize)
     builder.add_conditional_edges(START, route_entry)
     builder.add_conditional_edges("triage", route_after_triage)
     builder.add_conditional_edges("credit_interview", route_after_interview)
-    builder.add_edge("credit", "finalize")
-    builder.add_edge("exchange", "finalize")
+    builder.add_edge("credit", "humanize")
+    builder.add_edge("exchange", "humanize")
     builder.add_edge("limit_guard", "finalize")
+    builder.add_edge("humanize", "finalize")
     builder.add_edge("finalize", END)
     return builder.compile(name="banco-agil-conversation")
 
 
-def _handler_update(state: GraphState, reply: str) -> GraphUpdate:
+def _handler_update(state: GraphState, reply: str, agent: Agent) -> GraphUpdate:
     return {
         "conversation": state["conversation"],
         "reply": reply,
         "step_count": state["step_count"] + 1,
+        "responding_agent": agent,
     }
 
 

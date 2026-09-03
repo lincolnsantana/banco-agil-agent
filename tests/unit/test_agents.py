@@ -9,6 +9,7 @@ import pytest
 from langchain_core.messages import BaseMessage, SystemMessage
 from pydantic import BaseModel
 
+from banco_agil.agents._shared import humanize_reply
 from banco_agil.agents.credit import handle_credit
 from banco_agil.agents.credit_interview import handle_credit_interview
 from banco_agil.agents.exchange import handle_exchange
@@ -47,6 +48,10 @@ class RecordingLlm:
 
     response: object
     calls: list[tuple[str, list[BaseMessage], str | None]] = field(default_factory=list)
+
+    def was_called(self, turn_id: str) -> bool:
+        """Informa se o turno já foi registrado."""
+        return any(call[0] == turn_id for call in self.calls)
 
     def invoke_structured(
         self,
@@ -217,6 +222,32 @@ def _increase_result(status: CreditRequestStatus) -> LimitIncreaseResult:
     )
 
 
+@pytest.mark.parametrize("agent", list(Agent))
+def test_humanization_uses_each_specialist_prompt_without_exposing_data(
+    client: Client,
+    agent: Agent,
+) -> None:
+    state = ConversationState(authenticated_client=client, active_agent=agent)
+    llm = RecordingLlm({"opening": "Entendi, vamos cuidar disso com atenção."})
+
+    reply = humanize_reply(
+        state,
+        "Resposta canônica com R$ 2.500,00.",
+        llm,
+        "humanize-turn",
+        responding_agent=agent,
+        recent_messages=[],
+        user_text="Meu CPF é 01234567890 e quero consultar meu limite",
+    )
+
+    assert reply.startswith("Entendi, vamos cuidar disso com atenção.")
+    assert reply.endswith("Resposta canônica com R$ 2.500,00.")
+    _, messages, version = llm.calls[0]
+    assert version == f"global@1.2.0+{agent.value}@1.2.0"
+    assert "01234567890" not in str(messages)
+    assert "2.500,00" not in str(messages)
+
+
 def test_triage_collects_credentials_one_at_a_time(client: Client) -> None:
     state = ConversationState()
     service = FakeAuthenticationService(client)
@@ -278,7 +309,7 @@ def test_ambiguous_intent_uses_one_structured_llm_call(client: Client) -> None:
     turn_id, messages, version = llm.calls[0]
     assert turn_id == "turn-2"
     assert sum(isinstance(message, SystemMessage) for message in messages) == 1
-    assert version == "global@1.1.0+triage@1.1.0"
+    assert version == "global@1.2.0+triage@1.2.0"
     assert "01234567890" not in str(messages[1].content)
     assert "Ana" not in str(messages[1].content)
     assert "formal" not in str(messages[1].content)

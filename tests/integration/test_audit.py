@@ -91,6 +91,10 @@ class MetricsRecordingLlm:
     metrics: InMemoryLlmMetricsRecorder
     calls: list[str] = field(default_factory=list)
 
+    def was_called(self, turn_id: str) -> bool:
+        """Informa se o turno já foi registrado."""
+        return turn_id in self.calls
+
     def invoke_structured(
         self,
         turn_id: str,
@@ -204,18 +208,27 @@ def test_audit_storage_and_logs_contain_no_pii(
 
 def test_metrics_distinguish_zero_and_one_llm_call() -> None:
     metrics = InMemoryLlmMetricsRecorder()
-    llm = MetricsRecordingLlm({"intent": "other"}, metrics)
-    service = _service(None, llm)
+    service = _service(None)
     state = ConversationState(authenticated_client=_client())
 
     service.handle_turn(state, (), "quero aumentar meu limite")
     assert metrics.calls == []
 
-    ambiguous_state = ConversationState(authenticated_client=_client())
-    service.handle_turn(ambiguous_state, (), "preciso resolver outra coisa")
+    llm = MetricsRecordingLlm({"opening": "Entendi, vamos prosseguir."}, metrics)
+    humanized_service = _service(None, llm)
+    humanized_state = ConversationState(authenticated_client=_client())
+    humanized_service.handle_turn(humanized_state, (), "quero aumentar meu limite")
     assert len(metrics.calls) == 1
     assert metrics.calls[0].model == "fake-model"
-    assert metrics.calls[0].prompt_version == "global@1.1.0+triage@1.1.0"
+    assert metrics.calls[0].prompt_version == "global@1.2.0+credit@1.2.0"
+
+    ambiguous_metrics = InMemoryLlmMetricsRecorder()
+    ambiguous_llm = MetricsRecordingLlm({"intent": "other"}, ambiguous_metrics)
+    ambiguous_service = _service(None, ambiguous_llm)
+    ambiguous_state = ConversationState(authenticated_client=_client())
+    ambiguous_service.handle_turn(ambiguous_state, (), "preciso resolver outra coisa")
+    assert len(ambiguous_metrics.calls) == 1
+    assert ambiguous_metrics.calls[0].prompt_version == ("global@1.2.0+triage@1.2.0")
 
 
 def test_audit_failure_is_non_fatal(tmp_path: Path) -> None:
@@ -257,7 +270,7 @@ def test_repository_round_trips_integration_event_with_llm_fields(
             result="ok",
             duration_ms=12.5,
             model="fake-model",
-            prompt_version="global@1.1.0+triage@1.1.0",
+            prompt_version="global@1.2.0+triage@1.2.0",
             llm_calls=1,
             input_tokens=120,
             output_tokens=30,

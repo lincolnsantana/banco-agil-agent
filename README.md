@@ -125,10 +125,12 @@ streamlit run app.py
 
 A interface informa no topo se o Groq está ativo e qual modelo foi carregado.
 Sem `BANCO_AGIL_GROQ_API_KEY`, ela sinaliza **Modo determinístico**: nesse modo,
-nenhuma chamada ao provedor é realizada. Mesmo com Groq ativo, regras bancárias,
-autenticação, cálculos e intents evidentes continuam determinísticos; o modelo é
-consultado somente para interpretar intenções ambíguas, limitado a uma chamada
-por turno.
+nenhuma chamada ao provedor é realizada. Com Groq ativo, cada especialista cria
+primeiro uma resposta canônica a partir das regras e tools em Python. O modelo
+recebe contexto sanitizado e pode acrescentar uma abertura curta e natural sem
+alterar fatos, valores ou decisões. Em linguagem ambígua, a única chamada do
+turno é reservada à classificação da intenção e a resposta permanece canônica.
+O limite continua sendo uma chamada por turno.
 
 Roteiro na UI: informe o CPF → informe o nascimento → `qual é meu limite?`
 (`R$ 2.500,00`) → `quero aumentar meu limite` → `4000` → `Encerrar atendimento`

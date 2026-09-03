@@ -26,14 +26,14 @@ EXPECTED_TOOLS = {
 
 def test_registry_uses_documented_ids_versions_variables_and_limits() -> None:
     assert PROMPT_REGISTRY.global_prompt.prompt_id == "global"
-    assert PROMPT_REGISTRY.global_prompt.version == "1.1.0"
+    assert PROMPT_REGISTRY.global_prompt.version == "1.2.0"
     assert PROMPT_REGISTRY.global_prompt.character_limit == 1_200
     assert PROMPT_REGISTRY.global_prompt.variables == frozenset()
 
     for agent in Agent:
         definition = PROMPT_REGISTRY.for_agent(agent)
         assert definition.prompt_id == agent.value
-        assert definition.version == "1.1.0"
+        assert definition.version == "1.2.0"
         assert definition.character_limit == 1_000
         assert definition.variables == frozenset({"state"})
 
@@ -57,7 +57,7 @@ def test_rendering_produces_one_bounded_system_message_for_active_agent(
     specialist = PROMPT_REGISTRY.for_agent(agent)
 
     assert isinstance(rendered.system_message, SystemMessage)
-    assert rendered.prompt_version == f"global@1.1.0+{agent.value}@1.1.0"
+    assert rendered.prompt_version == f"global@1.2.0+{agent.value}@1.2.0"
     assert "{{" not in str(rendered.system_message.content)
     assert len(PROMPT_REGISTRY.global_prompt.template) <= 1_200
     assert len(specialist.template) <= 1_000

@@ -99,6 +99,7 @@ class ConversationService:
             "user_text": normalized_text,
             "turn_id": turn_id,
             "reply": "",
+            "responding_agent": None,
             "step_count": 0,
         }
         try:
