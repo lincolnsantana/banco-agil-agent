@@ -39,10 +39,10 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
   impedem loops; histórico limitado às 6 mensagens recentes.
 - **Nós** (`agents/triage.py`, `credit.py`, `credit_interview.py`,
   `exchange.py`): autenticação e rotas claras são determinísticas (parser
-  primeiro; `alterar/mudar/ajustar/modificar limite` é aumento); só intenção
-  pós-autenticação ambígua usa o Groq para classificar, sem rota direta para
-  entrevista; Crédito, Entrevista e Câmbio podem ter a resposta final redigida
-  pelo Groq, com fallback canônico.
+  primeiro; `alterar/mudar/ajustar/modificar limite` é aumento, `score` /
+  `entrevista` é entrevista); só intenção pós-autenticação ambígua usa o Groq
+  para classificar; Crédito, Entrevista e Câmbio podem ter a resposta final
+  redigida pelo Groq, com fallback canônico.
 - **Prompts** (`prompts/`): um system message = global + especialista ativo +
   estado mínimo sanitizado (sem PII, < 500 caracteres); só as tools do
   especialista ativo são expostas; IDs/versões testados contra `PROMPTS.md`.
@@ -64,8 +64,8 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
 ## Funcionalidades implementadas
 
 - Autenticação com 3 tentativas e encerramento cordial.
-- Consulta de limite e solicitação de aumento com decisão por score.
-- Entrevista de crédito completa com reanálise automática.
+- Consulta de limite e solicitação de aumento com decisão por score; aprovação atualiza `clientes.csv`.
+- Entrevista de crédito direta (pedido de score) ou após rejeição, com consentimento e reanálise quando houver limite pendente.
 - Cotação de moedas com tratamento de indisponibilidade.
 - Encerramento (`encerrar`, `sair`, `finalizar`…) prioritário em qualquer nó.
 - UI Streamlit com apresentação inicial gerada pelo Groq quando ativo, ações
@@ -112,9 +112,9 @@ encerramento e autenticação continuam determinísticos. Temperatura `0.3`, sa�
 de 500 tokens e timeout de 30 s; saída inválida ou falha preserva integralmente
 a resposta canônica.
 
-**Limitações**: sem RAG/banco vetorial (fora do escopo); sem checkpoint de
-sessão persistente (T019, opcional); câmbio exige rede; LLM nunca decide regra
-de negócio nem inventa autenticação, limite, score ou cotação.
+**Limitações**: sem RAG/banco vetorial (fora do escopo, roteamento usa parser +
+classificador Groq); câmbio exige rede; LLM nunca decide aprovação, limite,
+score ou cotação, apenas sugere a rota ambígua e redige o canônico.
 
 ## Tutorial de execução e testes
 

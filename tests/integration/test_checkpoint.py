@@ -41,6 +41,11 @@ class MemoryClientRepository:
         self.client = self.client.model_copy(update={"credit_score": credit_score})
         return self.client
 
+    def update_credit_limit(self, cpf: str, credit_limit: Decimal) -> Client:
+        """Atualiza o limite do cliente em memoria."""
+        self.client = self.client.model_copy(update={"credit_limit": credit_limit})
+        return self.client
+
 
 @dataclass
 class MemoryScoreLimitRepository:
@@ -90,7 +95,7 @@ def _service(store: SessionCheckpointStore | None) -> ConversationService:
     dependencies = GraphDependencies(
         authentication=AuthenticationService(clients),
         credit=CreditService(
-            MemoryScoreLimitRepository(), MemoryCreditRequestRepository()
+            MemoryScoreLimitRepository(), MemoryCreditRequestRepository(), clients
         ),
         credit_interview=CreditInterviewService(clients),
         exchange=ExchangeService(SilentExchangeProvider()),

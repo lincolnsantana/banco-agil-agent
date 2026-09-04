@@ -60,7 +60,11 @@ def route_after_triage(state: GraphState) -> NodeRoute:
         return "limit_guard"
     if state["conversation"].authenticated:
         active_agent = state["conversation"].active_agent
-        if active_agent in {Agent.CREDIT, Agent.EXCHANGE}:
+        if active_agent in {
+            Agent.CREDIT,
+            Agent.CREDIT_INTERVIEW,
+            Agent.EXCHANGE,
+        }:
             return _route_for_agent(active_agent)
     return "humanize"
 
@@ -69,12 +73,12 @@ def route_after_interview(state: GraphState) -> NodeRoute:
     """Encaminha entrevista concluida para reanalise imediata de credito."""
     if state["conversation"].ended:
         return "finalize"
-    if state["step_count"] >= MAX_HANDLER_STEPS:
-        return "limit_guard"
     if (
         state["conversation"].active_agent is Agent.CREDIT
         and state["conversation"].credit_reanalysis_pending
     ):
+        if state["step_count"] >= MAX_HANDLER_STEPS:
+            return "limit_guard"
         return "credit"
     return "humanize"
 

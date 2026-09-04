@@ -38,6 +38,11 @@ class FakeClientRepository:
         )
         return self.client
 
+    def update_credit_limit(self, cpf: str, credit_limit: Decimal) -> Client:
+        """Nao utilizado pelos cenarios de entrevista."""
+        self.client = self.client.model_copy(update={"credit_limit": credit_limit})
+        return self.client
+
 
 @pytest.fixture
 def interview_context() -> tuple[
@@ -73,7 +78,7 @@ def test_interview_requires_authenticated_client(
         service.start(ConversationState(), consent=True)
 
 
-def test_interview_requires_rejected_limit_to_reanalyze(
+def test_interview_allows_direct_start_without_rejected_limit(
     interview_context: tuple[
         CreditInterviewService,
         FakeClientRepository,
@@ -83,8 +88,10 @@ def test_interview_requires_rejected_limit_to_reanalyze(
     service, _, state = interview_context
     state.requested_limit = None
 
-    with pytest.raises(DomainError, match="requested limit"):
-        service.start(state, consent=True)
+    progress = service.start(state, consent=True)
+
+    assert progress.next_field is InterviewField.MONTHLY_INCOME
+    assert not progress.consent_declined
 
 
 def test_declined_consent_does_not_store_or_persist_answers(

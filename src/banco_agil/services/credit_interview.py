@@ -49,13 +49,14 @@ class CreditInterviewService:
         state: ConversationState,
         consent: bool,
     ) -> InterviewProgress:
-        """Inicia a coleta somente quando houver autenticacao e consentimento.
+        """Inicia a coleta com autenticacao e consentimento explicito.
+
+        Aceita entrevista direta (revisao de score) ou apos limite rejeitado.
 
         Raises:
             AuthorizationError: Se nao houver cliente autenticado.
-            DomainError: Se nao existir limite rejeitado para reanalise.
         """
-        self._require_eligible_state(state)
+        self._require_authenticated_client(state)
         state.interview_draft = CreditInterviewDraft()
         if not consent:
             return InterviewProgress(next_field=None, consent_declined=True)
@@ -92,7 +93,7 @@ class CreditInterviewService:
             AuthorizationError: Se nao houver cliente autenticado.
             DomainError: Se faltar consentimento ou a resposta for invalida.
         """
-        self._require_eligible_state(state)
+        self._require_authenticated_client(state)
         draft = state.interview_draft
         if not draft.consent_given:
             raise DomainError("credit interview requires consent")
@@ -124,11 +125,13 @@ class CreditInterviewService:
     ) -> ScoreUpdateResult:
         """Calcula e persiste o score de uma entrevista completa e validada.
 
+        Quando houver limite rejeitado, agenda a reanalise no credito; em
+        entrevista direta, apenas conclui com o novo score.
+
         Raises:
             AuthorizationError: Se nao houver cliente autenticado.
-            DomainError: Se nao existir limite rejeitado para reanalise.
         """
-        client = self._require_eligible_state(state)
+        client = self._require_authenticated_client(state)
         new_score = calculate_credit_score(interview)
         updated_client = self._client_repository.update_credit_score(
             client.cpf,
@@ -136,8 +139,12 @@ class CreditInterviewService:
         )
         state.authenticated_client = updated_client
         state.interview_draft = CreditInterviewDraft()
-        state.credit_reanalysis_pending = True
-        state.active_agent = Agent.CREDIT
+        if state.requested_limit is None:
+            state.credit_reanalysis_pending = False
+            state.active_agent = Agent.TRIAGE
+        else:
+            state.credit_reanalysis_pending = True
+            state.active_agent = Agent.CREDIT
         return ScoreUpdateResult(
             previous_score=client.credit_score,
             new_score=updated_client.credit_score,
@@ -157,12 +164,10 @@ class CreditInterviewService:
         )
 
     @staticmethod
-    def _require_eligible_state(state: ConversationState) -> Client:
+    def _require_authenticated_client(state: ConversationState) -> Client:
         client = state.authenticated_client
         if client is None:
             raise AuthorizationError("authenticated client is required")
-        if state.requested_limit is None:
-            raise DomainError("requested limit is required for credit interview")
         return client
 
     @staticmethod

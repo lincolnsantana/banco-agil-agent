@@ -65,7 +65,7 @@ def handle_credit_interview(
 
     if progress.completed_interview is not None:
         try:
-            ScoreUpdateResult.model_validate(
+            score_result = ScoreUpdateResult.model_validate(
                 update_credit_score.invoke(
                     {
                         "interview": progress.completed_interview,
@@ -76,9 +76,15 @@ def handle_credit_interview(
             )
         except RepositoryError:
             return "Não foi possível atualizar o score agora. Tente novamente."
+        if state.credit_reanalysis_pending:
+            return (
+                "Entrevista concluída e score atualizado. Farei a reanálise sem "
+                "garantia de aprovação."
+            )
         return (
-            "Entrevista concluída e score atualizado. Farei a reanálise sem "
-            "garantia de aprovação."
+            f"Entrevista concluída e score atualizado de "
+            f"{score_result.previous_score} para {score_result.new_score}. "
+            "Posso ajudar em algo mais?"
         )
     return _question(progress.next_field)
 

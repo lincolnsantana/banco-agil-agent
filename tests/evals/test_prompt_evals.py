@@ -28,7 +28,7 @@ from banco_agil.domain.models import (
 from banco_agil.prompts.renderer import render_prompt
 
 DATASET_VERSION = "1.0.0"
-PROMPT_VERSION = "global@1.3.0+triage@1.4.0"
+PROMPT_VERSION = "global@1.3.0+triage@1.5.0"
 MAX_LATENCY_MS = 1000.0
 
 BASELINE = {

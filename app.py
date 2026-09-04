@@ -117,6 +117,7 @@ def _build_conversation_service(
             CreditRequestCsvRepository(
                 settings.data_dir / "solicitacoes_aumento_limite.csv"
             ),
+            client_repository,
         ),
         credit_interview=CreditInterviewService(client_repository),
         exchange=ExchangeService(AwesomeApiClient(settings.awesomeapi_base_url)),

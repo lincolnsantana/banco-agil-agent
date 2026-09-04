@@ -47,6 +47,11 @@ class MemoryClientRepository:
         self.client = self.client.model_copy(update={"credit_score": credit_score})
         return self.client
 
+    def update_credit_limit(self, cpf: str, credit_limit: Decimal) -> Client:
+        """Atualiza o limite do cliente em memoria."""
+        self.client = self.client.model_copy(update={"credit_limit": credit_limit})
+        return self.client
+
 
 @dataclass
 class MemoryScoreLimitRepository:
@@ -140,7 +145,7 @@ def _service(
     dependencies = GraphDependencies(
         authentication=AuthenticationService(clients),
         credit=CreditService(
-            MemoryScoreLimitRepository(), MemoryCreditRequestRepository()
+            MemoryScoreLimitRepository(), MemoryCreditRequestRepository(), clients
         ),
         credit_interview=CreditInterviewService(clients),
         exchange=ExchangeService(SilentExchangeProvider()),
@@ -243,7 +248,7 @@ def test_metrics_distinguish_zero_and_one_specialist_llm_call() -> None:
     ambiguous_state = ConversationState(authenticated_client=_client())
     ambiguous_service.handle_turn(ambiguous_state, (), "preciso resolver outra coisa")
     assert len(ambiguous_metrics.calls) == 1
-    assert ambiguous_metrics.calls[0].prompt_version == ("global@1.3.0+triage@1.4.0")
+    assert ambiguous_metrics.calls[0].prompt_version == ("global@1.3.0+triage@1.5.0")
 
 
 def test_audit_failure_is_non_fatal(tmp_path: Path) -> None:
@@ -285,7 +290,7 @@ def test_repository_round_trips_integration_event_with_llm_fields(
             result="ok",
             duration_ms=12.5,
             model="fake-model",
-            prompt_version="global@1.3.0+triage@1.4.0",
+            prompt_version="global@1.3.0+triage@1.5.0",
             llm_calls=1,
             input_tokens=120,
             output_tokens=30,

@@ -381,6 +381,34 @@ def test_triage_routes_increase_synonyms_without_llm(
     assert llm.calls == []
 
 
+@pytest.mark.parametrize(
+    "user_text",
+    (
+        "quero aumentar meu score",
+        "como está a análise do meu score?",
+        "quero fazer a entrevista de crédito",
+    ),
+)
+def test_triage_routes_score_review_to_interview_without_llm(
+    client: Client,
+    user_text: str,
+) -> None:
+    state = ConversationState(authenticated_client=client)
+    llm = RecordingLlm({"intent": "other"})
+
+    handle_triage(
+        state,
+        user_text,
+        FakeAuthenticationService(client),
+        llm=llm,
+        turn_id="score-turn",
+    )
+
+    assert state.intent is Intent.CREDIT_INTERVIEW
+    assert state.active_agent is Agent.CREDIT_INTERVIEW
+    assert llm.calls == []
+
+
 def test_triage_uses_llm_only_for_ambiguous_authenticated_intent(
     client: Client,
 ) -> None:
@@ -399,7 +427,7 @@ def test_triage_uses_llm_only_for_ambiguous_authenticated_intent(
     assert state.active_agent is Agent.EXCHANGE
     assert len(llm.calls) == 1
     _, messages, version = llm.calls[0]
-    assert version == "global@1.3.0+triage@1.4.0"
+    assert version == "global@1.3.0+triage@1.5.0"
     assert "exterior" in str(messages[-1].content)
 
 

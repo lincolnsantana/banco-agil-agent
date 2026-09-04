@@ -88,6 +88,7 @@ def _build_service(
         credit=CreditService(
             ScoreLimitCsvRepository(data_dir / "score_limite.csv"),
             CreditRequestCsvRepository(data_dir / "solicitacoes_aumento_limite.csv"),
+            clients,
         ),
         credit_interview=CreditInterviewService(clients),
         exchange=ExchangeService(provider),
@@ -175,12 +176,15 @@ def test_increase_approved_journey(tmp_path: Path) -> None:
 
     assert "limite total" in replies[0].casefold()
     assert "aprovado" in replies[1].casefold()
+    assert "atualizado" in replies[1].casefold()
     requests = CreditRequestCsvRepository(
         data_dir / "solicitacoes_aumento_limite.csv"
     ).list_all()
     assert len(requests) == 1
     assert requests[0].status is CreditRequestStatus.APPROVED
     assert state.requested_limit is None
+    clients = ClientCsvRepository(data_dir / "clientes.csv")
+    assert clients.find_by_cpf("01234567890").credit_limit == Decimal("4000.00")
 
 
 def test_rejection_interview_and_reanalysis_journey(tmp_path: Path) -> None:

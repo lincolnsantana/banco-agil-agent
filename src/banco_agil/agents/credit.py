@@ -98,8 +98,8 @@ def _request_increase(
     state.active_agent = Agent.TRIAGE
     return (
         f"Boa notícia: seu pedido de limite total de R$ "
-        f"{format_money(result.requested_limit)} foi aprovado e registrado. O limite "
-        "cadastrado ainda não foi alterado. Posso ajudar em algo mais?"
+        f"{format_money(result.requested_limit)} foi aprovado e o limite cadastrado "
+        "foi atualizado. Posso ajudar em algo mais?"
     )
 
 

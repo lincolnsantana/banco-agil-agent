@@ -28,6 +28,10 @@ class FakeClientRepository:
         """Nao utilizado pelos cenarios de autenticacao."""
         raise NotImplementedError
 
+    def update_credit_limit(self, cpf: str, credit_limit: Decimal) -> Client:
+        """Nao utilizado pelos cenarios de autenticacao."""
+        raise NotImplementedError
+
 
 @pytest.fixture
 def trusted_client() -> Client:

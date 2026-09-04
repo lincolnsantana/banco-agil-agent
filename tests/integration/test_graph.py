@@ -33,10 +33,11 @@ FIXED_TIME = datetime(2026, 9, 3, 12, 0, tzinfo=UTC)
 
 @dataclass
 class MemoryClientRepository:
-    """Mantem um cliente ficticio e registra atualizacoes de score."""
+    """Mantem um cliente ficticio e registra atualizacoes de score e limite."""
 
     client: Client
     updated_scores: list[int] = field(default_factory=list)
+    updated_limits: list[Decimal] = field(default_factory=list)
 
     def find_by_cpf(self, cpf: str) -> Client | None:
         """Retorna o cliente quando o CPF coincide."""
@@ -48,6 +49,14 @@ class MemoryClientRepository:
             raise ValueError("client not found")
         self.updated_scores.append(credit_score)
         self.client = self.client.model_copy(update={"credit_score": credit_score})
+        return self.client
+
+    def update_credit_limit(self, cpf: str, credit_limit: Decimal) -> Client:
+        """Atualiza o limite do cliente em memoria."""
+        if cpf != self.client.cpf:
+            raise ValueError("client not found")
+        self.updated_limits.append(credit_limit)
+        self.client = self.client.model_copy(update={"credit_limit": credit_limit})
         return self.client
 
 
@@ -168,7 +177,7 @@ def build_harness(client: Client, llm: RecordingLlm | None = None) -> Harness:
     exchange = RecordingExchangeProvider()
     dependencies = GraphDependencies(
         authentication=AuthenticationService(clients),
-        credit=CreditService(scores, requests, clock=lambda: FIXED_TIME),
+        credit=CreditService(scores, requests, clients, clock=lambda: FIXED_TIME),
         credit_interview=CreditInterviewService(clients),
         exchange=ExchangeService(exchange),
         llm=llm,
@@ -252,6 +261,33 @@ def test_triage_routes_to_exchange_in_same_turn(client: Client) -> None:
     assert harness.exchange.calls == [("USD", "BRL")]
     assert "USD-BRL" in turn.reply
     assert "5,25" in turn.reply
+
+
+def test_approved_increase_updates_client_limit(client: Client) -> None:
+    harness = build_harness(client)
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT,
+        intent=Intent.LIMIT_INCREASE,
+    )
+
+    turn = harness.service.handle_turn(state, (), "4000")
+
+    assert "atualizado" in turn.reply.casefold()
+    assert harness.clients.client.credit_limit == Decimal("4000.00")
+    assert state.authenticated_client.credit_limit == Decimal("4000.00")
+    assert harness.requests.requests[0].status is CreditRequestStatus.APPROVED
+
+
+def test_score_review_routes_to_interview_and_asks_consent(client: Client) -> None:
+    harness = build_harness(client)
+    state = ConversationState(authenticated_client=client)
+
+    turn = harness.service.handle_turn(state, (), "quero aumentar meu score")
+
+    assert state.active_agent is Agent.CREDIT_INTERVIEW
+    assert state.intent is Intent.CREDIT_INTERVIEW
+    assert "entrevista" in turn.reply.casefold()
 
 
 def test_interview_completion_reanalyzes_credit_in_same_turn(client: Client) -> None:

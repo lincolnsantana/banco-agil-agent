@@ -18,6 +18,10 @@ class ClientRepository(Protocol):
         """Atualiza o score e retorna o cliente persistido."""
         ...
 
+    def update_credit_limit(self, cpf: str, credit_limit: Decimal) -> Client:
+        """Atualiza o limite e retorna o cliente persistido."""
+        ...
+
 
 class ScoreLimitRepository(Protocol):
     """Contrato para consulta do limite permitido por score."""

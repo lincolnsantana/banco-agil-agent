@@ -5,6 +5,7 @@ import os
 import re
 from collections.abc import Iterator
 from contextlib import contextmanager
+from decimal import Decimal
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
@@ -63,17 +64,7 @@ class ClientCsvRepository:
         normalized_cpf = normalize_cpf(cpf)
         with self._locked():
             clients = self._read_clients()
-            client_index = next(
-                (
-                    index
-                    for index, client in enumerate(clients)
-                    if client.cpf == normalized_cpf
-                ),
-                None,
-            )
-            if client_index is None:
-                raise RepositoryError("client not found")
-
+            client_index = self._find_client_index(clients, normalized_cpf)
             current = clients[client_index]
             updated = Client(
                 cpf=current.cpf,
@@ -84,6 +75,43 @@ class ClientCsvRepository:
             clients[client_index] = updated
             self._write_clients(clients)
         return updated
+
+    def update_credit_limit(self, cpf: str, credit_limit: Decimal) -> Client:
+        """Atualiza o limite sob lock e substitui o CSV atomicamente.
+
+        Raises:
+            RepositoryError: Se o cliente nao existir ou a persistencia falhar.
+            ValueError: Se o CPF informado tiver formato invalido.
+            ValidationError: Se o novo limite for invalido.
+        """
+        normalized_cpf = normalize_cpf(cpf)
+        with self._locked():
+            clients = self._read_clients()
+            client_index = self._find_client_index(clients, normalized_cpf)
+            current = clients[client_index]
+            updated = Client(
+                cpf=current.cpf,
+                birth_date=current.birth_date,
+                credit_limit=credit_limit,
+                credit_score=current.credit_score,
+            )
+            clients[client_index] = updated
+            self._write_clients(clients)
+        return updated
+
+    @staticmethod
+    def _find_client_index(clients: list[Client], normalized_cpf: str) -> int:
+        client_index = next(
+            (
+                index
+                for index, client in enumerate(clients)
+                if client.cpf == normalized_cpf
+            ),
+            None,
+        )
+        if client_index is None:
+            raise RepositoryError("client not found")
+        return client_index
 
     @contextmanager
     def _locked(self) -> Iterator[None]:

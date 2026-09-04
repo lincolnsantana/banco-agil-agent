@@ -52,14 +52,18 @@ def handle_triage(
     if intent not in {
         Intent.CREDIT_LIMIT,
         Intent.LIMIT_INCREASE,
+        Intent.CREDIT_INTERVIEW,
         Intent.EXCHANGE_RATE,
     }:
         return "Posso ajudar com limite de crédito ou cotação de moedas. O que deseja?"
 
     state.intent = intent
-    state.active_agent = (
-        Agent.EXCHANGE if intent is Intent.EXCHANGE_RATE else Agent.CREDIT
-    )
+    if intent is Intent.EXCHANGE_RATE:
+        state.active_agent = Agent.EXCHANGE
+    elif intent is Intent.CREDIT_INTERVIEW:
+        state.active_agent = Agent.CREDIT_INTERVIEW
+    else:
+        state.active_agent = Agent.CREDIT
     return "Certo. Vou prosseguir com sua solicitação."
 
 
@@ -131,6 +135,11 @@ def _deterministic_intent(user_text: str) -> Intent | None:
     normalized = normalized_text(user_text)
     if any(word in normalized for word in ("cambio", "cotacao", "dolar", "euro")):
         return Intent.EXCHANGE_RATE
+    if any(
+        term in normalized
+        for term in ("entrevista", "score", "pontuacao", "pontos de credito")
+    ):
+        return Intent.CREDIT_INTERVIEW
     if any(term in normalized for term in ("aumentar", "aumento", "novo limite")):
         return Intent.LIMIT_INCREASE
     if "limite" in normalized and any(

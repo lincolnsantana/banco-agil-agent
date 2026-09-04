@@ -67,6 +67,20 @@ def test_update_credit_score_replaces_same_client_row(clients_path: Path) -> Non
     assert ",2500.00,760" in contents
 
 
+def test_update_credit_limit_replaces_same_client_row(clients_path: Path) -> None:
+    from decimal import Decimal
+
+    repository = ClientCsvRepository(clients_path)
+
+    updated = repository.update_credit_limit("01234567890", Decimal("4000.00"))
+
+    assert updated.credit_limit == Decimal("4000.00")
+    assert repository.find_by_cpf("01234567890") == updated
+    contents = clients_path.read_text(encoding="utf-8")
+    assert contents.count("01234567890") == 1
+    assert "4000.00,700" in contents
+
+
 def test_update_rejects_invalid_score_without_changing_file(
     clients_path: Path,
 ) -> None:

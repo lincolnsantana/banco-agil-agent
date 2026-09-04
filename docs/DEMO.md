@@ -21,15 +21,15 @@ Dados fictícios: CPF `11144477735`, nascimento `20/05/1990`. Sem chave de LLM.
 5. Envie `20/05/1990` → `Dados confirmados. Como posso ajudar hoje?`
 6. Envie `qual é meu limite?` → `Seu limite atual é R$ 2.500,00...`
 7. Envie `quero alterar meu limite` → entende como aumento e pergunta o limite total.
-8. Envie `4000` → pedido aprovado e registrado (limite cadastrado inalterado).
+8. Envie `4000` → pedido aprovado e limite em `clientes.csv` atualizado para `4000.00`.
 
 Comente: decisão por faixa de score em `score_limite.csv`, uma linha por pedido.
 
 ## 2:00–4:00 — Rejeição, entrevista e reanálise
 
-1. Peça `15000` → rejeitado para o score atual, com oferta de entrevista.
-2. Responda `sim` e complete: `20000`, `formal`, `1000`, `0`, `não`.
-3. Na última resposta, o score sobe para 1000 e a reanálise aprova no mesmo turno.
+1. Peça `quero aumentar meu score` → oferece a entrevista e pede consentimento.
+2. Responda `sim` e complete: `20000`, `formal`, `1000`, `0`, `não` → score atualizado.
+3. Para reanálise: peça `15000` → rejeitado, aceite a entrevista e conclua para aprovar no mesmo turno.
 
 Comente: consentimento obrigatório, uma pergunta por vez, fórmula determinística,
 sem promessa de aprovação.

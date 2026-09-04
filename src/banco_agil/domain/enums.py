@@ -18,6 +18,7 @@ class Intent(StrEnum):
     UNKNOWN = "unknown"
     CREDIT_LIMIT = "credit_limit"
     LIMIT_INCREASE = "limit_increase"
+    CREDIT_INTERVIEW = "credit_interview"
     EXCHANGE_RATE = "exchange_rate"
     OTHER = "other"
     END_SERVICE = "end_service"

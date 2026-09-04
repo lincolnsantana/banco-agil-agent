@@ -66,22 +66,59 @@ def authenticated_state() -> ConversationState:
     return ConversationState(authenticated_client=client)
 
 
+class FakeClientRepository:
+    """Mantem cliente em memoria e registra atualizacoes de limite."""
+
+    def __init__(self, client: Client) -> None:
+        """Guarda o cliente inicial."""
+        self.client = client
+        self.updated_limits: list[Decimal] = []
+
+    def find_by_cpf(self, cpf: str) -> Client | None:
+        """Retorna o cliente quando o CPF coincide."""
+        return self.client if cpf == self.client.cpf else None
+
+    def update_credit_score(self, cpf: str, credit_score: int) -> Client:
+        """Atualiza o score em memoria."""
+        self.client = self.client.model_copy(update={"credit_score": credit_score})
+        return self.client
+
+    def update_credit_limit(self, cpf: str, credit_limit: Decimal) -> Client:
+        """Atualiza o limite em memoria."""
+        self.updated_limits.append(credit_limit)
+        self.client = self.client.model_copy(update={"credit_limit": credit_limit})
+        return self.client
+
+
 def build_service(
     maximum_limit: Decimal = Decimal("5000.00"),
-) -> tuple[CreditService, FakeScoreLimitRepository, FakeCreditRequestRepository]:
+) -> tuple[
+    CreditService,
+    FakeScoreLimitRepository,
+    FakeCreditRequestRepository,
+    FakeClientRepository,
+]:
     """Monta o servico com dependencias observaveis."""
     score_repository = FakeScoreLimitRepository(maximum_limit)
     request_repository = FakeCreditRequestRepository()
+    client = Client(
+        cpf="01234567890",
+        birth_date=date(1990, 5, 20),
+        credit_limit=Decimal("2500.00"),
+        credit_score=700,
+    )
+    client_repository = FakeClientRepository(client)
     service = CreditService(
         score_limit_repository=score_repository,
         credit_request_repository=request_repository,
+        client_repository=client_repository,
         clock=lambda: FIXED_TIME,
     )
-    return service, score_repository, request_repository
+    return service, score_repository, request_repository, client_repository
 
 
 def test_credit_limit_requires_authenticated_session() -> None:
-    service, _, _ = build_service()
+    service, _, _, _ = build_service()
 
     with pytest.raises(AuthorizationError):
         service.get_credit_limit(ConversationState())
@@ -90,7 +127,7 @@ def test_credit_limit_requires_authenticated_session() -> None:
 def test_get_credit_limit_uses_trusted_client(
     authenticated_state: ConversationState,
 ) -> None:
-    service, _, _ = build_service()
+    service, _, _, _ = build_service()
 
     result = service.get_credit_limit(authenticated_state)
 
@@ -98,7 +135,7 @@ def test_get_credit_limit_uses_trusted_client(
 
 
 def test_limit_increase_requires_authenticated_session() -> None:
-    service, score_repository, request_repository = build_service()
+    service, score_repository, request_repository, _ = build_service()
 
     with pytest.raises(AuthorizationError):
         service.request_limit_increase(ConversationState(), Decimal("3000.00"))
@@ -123,7 +160,7 @@ def test_invalid_new_limit_is_rejected_without_persistence(
     authenticated_state: ConversationState,
     new_limit: Decimal,
 ) -> None:
-    service, score_repository, request_repository = build_service()
+    service, score_repository, request_repository, _ = build_service()
 
     with pytest.raises(DomainError, match="greater than current limit"):
         service.request_limit_increase(authenticated_state, new_limit)
@@ -135,8 +172,9 @@ def test_invalid_new_limit_is_rejected_without_persistence(
 def test_request_is_approved_at_score_limit_boundary(
     authenticated_state: ConversationState,
 ) -> None:
-    service, score_repository, request_repository = build_service(Decimal("5000.00"))
-    original_client = authenticated_state.authenticated_client
+    service, score_repository, request_repository, client_repository = build_service(
+        Decimal("5000.00")
+    )
 
     result = service.request_limit_increase(
         authenticated_state,
@@ -149,14 +187,15 @@ def test_request_is_approved_at_score_limit_boundary(
     assert request_repository.requests[0].status is CreditRequestStatus.APPROVED
     assert request_repository.requests[0].requested_at == FIXED_TIME
     assert score_repository.queried_scores == [700]
-    assert authenticated_state.authenticated_client is original_client
-    assert authenticated_state.authenticated_client.credit_limit == Decimal("2500.00")
+    assert client_repository.updated_limits == [Decimal("5000.00")]
+    assert authenticated_state.authenticated_client.credit_limit == Decimal("5000.00")
+    assert result.current_limit == Decimal("5000.00")
 
 
 def test_decision_uses_same_cent_value_that_is_persisted(
     authenticated_state: ConversationState,
 ) -> None:
-    service, _, request_repository = build_service(Decimal("5000.00"))
+    service, _, request_repository, _ = build_service(Decimal("5000.00"))
 
     result = service.request_limit_increase(
         authenticated_state,
@@ -171,7 +210,9 @@ def test_decision_uses_same_cent_value_that_is_persisted(
 def test_rejected_request_offers_credit_interview(
     authenticated_state: ConversationState,
 ) -> None:
-    service, _, request_repository = build_service(Decimal("4999.99"))
+    service, _, request_repository, client_repository = build_service(
+        Decimal("4999.99")
+    )
 
     result = service.request_limit_increase(
         authenticated_state,
@@ -183,12 +224,14 @@ def test_rejected_request_offers_credit_interview(
     assert request_repository.statuses_received == [CreditRequestStatus.REJECTED]
     assert len(request_repository.requests) == 1
     assert authenticated_state.requested_limit == Decimal("5000.00")
+    assert client_repository.updated_limits == []
+    assert authenticated_state.authenticated_client.credit_limit == Decimal("2500.00")
 
 
 def test_request_is_created_as_pending_before_decision(
     authenticated_state: ConversationState,
 ) -> None:
-    service, _, request_repository = build_service()
+    service, _, request_repository, _ = build_service()
 
     service.request_limit_increase(authenticated_state, Decimal("3000.00"))
 

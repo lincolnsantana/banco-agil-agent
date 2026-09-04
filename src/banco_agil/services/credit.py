@@ -14,6 +14,7 @@ from banco_agil.domain.models import (
     LimitIncreaseResult,
 )
 from banco_agil.repositories.protocols import (
+    ClientRepository,
     CreditRequestRepository,
     ScoreLimitRepository,
 )
@@ -32,11 +33,13 @@ class CreditService:
         self,
         score_limit_repository: ScoreLimitRepository,
         credit_request_repository: CreditRequestRepository,
+        client_repository: ClientRepository,
         clock: Callable[[], datetime] = _utc_now,
     ) -> None:
         """Recebe repositorios e relogio injetavel para avaliacao."""
         self._score_limit_repository = score_limit_repository
         self._credit_request_repository = credit_request_repository
+        self._client_repository = client_repository
         self._clock = clock
 
     def get_credit_limit(self, state: ConversationState) -> CreditLimitResult:
@@ -87,15 +90,26 @@ class CreditService:
             created_request,
             status,
         )
-        offer_interview = status is CreditRequestStatus.REJECTED
-        if offer_interview:
+        if status is CreditRequestStatus.REJECTED:
             state.requested_limit = finalized_request.requested_limit
+            return LimitIncreaseResult(
+                current_limit=finalized_request.current_limit,
+                requested_limit=finalized_request.requested_limit,
+                status=finalized_request.status,
+                offer_interview=True,
+            )
 
+        updated_client = self._client_repository.update_credit_limit(
+            client.cpf,
+            finalized_request.requested_limit,
+        )
+        state.authenticated_client = updated_client
+        state.requested_limit = None
         return LimitIncreaseResult(
-            current_limit=finalized_request.current_limit,
+            current_limit=updated_client.credit_limit,
             requested_limit=finalized_request.requested_limit,
             status=finalized_request.status,
-            offer_interview=offer_interview,
+            offer_interview=False,
         )
 
     @staticmethod
