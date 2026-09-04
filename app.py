@@ -240,8 +240,9 @@ body,
 
 _PAGE_HEADING = """
 <header class="page-heading">
-    <h1 class="page-heading__title">🏦 Banco Ágil</h1>
-    <p class="page-heading__subtitle">Atendimento digital</p>
+    <h1 class="page-heading__title">🏦 Banco Ágil: Atendimento Digital</h1>
+    <p class="page-heading__subtitle">Cuide do seu crédito de forma simples: consulte seu limite, peça aumento, faça sua análise <br> e acompanhe cotações de moedas.
+</p>
 </header>
 """
 
