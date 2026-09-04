@@ -14,7 +14,8 @@ PROMPT_GLOBAL + PROMPT_DO_ESPECIALISTA_ATIVO + ESTADO_MÍNIMO
 
 Nunca enviar prompts de especialistas inativos.
 A apresentação inicial usa somente o prompt `welcome`, sem estado, histórico ou
-tools. A triagem é determinística e não envia prompt ao provedor.
+tools. Na triagem, autenticação e rotas claras são determinísticas; somente texto
+pós-autenticação ainda ambíguo envia o prompt de triagem ao provedor.
 
 ## 2. Versões e limites
 
@@ -22,7 +23,7 @@ tools. A triagem é determinística e não envia prompt ao provedor.
 | --- | --- | ---: |
 | `welcome` | `1.1.0` | 800 |
 | `global` | `1.3.0` | 1.200 |
-| `triage` | `1.3.0` | 1.000 |
+| `triage` | `1.4.0` | 1.000 |
 | `credit` | `1.3.0` | 1.000 |
 | `credit_interview` | `1.3.0` | 1.000 |
 | `exchange` | `1.3.0` | 1.000 |
@@ -70,8 +71,8 @@ devem ter uma frase; contratos completos estão no `AGENTS.md`.
 | `end_service` | Encerra o atendimento atual | Todos |
 
 O modelo não pode simular resultado de tool.
-Como a triagem não chama o LLM, `validate_client_cpf` e `authenticate_client` não
-são enviados ao provedor.
+As tools `validate_client_cpf` e `authenticate_client` são executadas somente em
+Python e não são enviadas na classificação de intenção.
 
 ## 4.1. Prompt de apresentação
 
@@ -120,9 +121,10 @@ serviços disponíveis e não prometa aprovação nem dê aconselhamento finance
 ## 6. System prompt de Triagem
 
 ID: `triage`  
-Versão: `1.3.0`
+Versão: `1.4.0`
 
-Referência documental do fluxo determinístico; não é enviado ao LLM.
+Autenticação e rotas claras usam este contrato em Python. O texto é enviado ao
+LLM somente para classificar intenção pós-autenticação ainda ambígua.
 
 ```text
 Escopo: autenticar e identificar intenção.
@@ -135,8 +137,10 @@ end_service. Somente após CPF válido, peça o nascimento e use authenticate_cl
 Não confirme autenticação antes do resultado dessa combinação.
 
 Após autenticar, identifique: consultar limite, pedir aumento, consultar câmbio,
-encerrar ou desconhecida. Em dúvida, faça uma pergunta curta. Sinalize a rota
-sem mencionar transferência. Não realize crédito, entrevista ou câmbio.
+encerrar ou desconhecida. O parser trata intenções claras; quando solicitado a
+classificar texto ambíguo, escolha somente a intenção bancária correspondente.
+Nunca direcione para entrevista: ela depende de rejeição e consentimento. Se a
+intenção continuar desconhecida, peça esclarecimento. Não realize operações.
 
 Estado: {{ state }}
 ```
@@ -244,9 +248,11 @@ serviços disponíveis, explicar que a autenticação vem primeiro e solicitar o
 CPF, sem pedir o nascimento; saída inválida ou falha usa a apresentação
 canônica.
 
-A triagem, incluindo autenticação e roteamento, é totalmente determinística e
-consome zero chamada. Crédito, Entrevista de Crédito e Câmbio usam o Groq para
-redigir a resposta final a partir do canônico protegido.
+A autenticação, o encerramento e o roteamento claro da triagem são totalmente
+determinísticos. Depois de autenticar, somente texto que o parser não resolver
+pode usar uma chamada Groq para classificar entre consulta, aumento, câmbio ou
+desconhecida. Entrevista nunca é rota direta: exige rejeição e consentimento.
+Crédito, Entrevista e Câmbio usam o Groq para redigir o canônico protegido.
 
 Quando houver credencial, o modelo pode ainda redigir a resposta final completa
 a partir do canônico com fatos mascarados (`[DADO_N]`). A saída só é aceita se
@@ -269,8 +275,9 @@ HISTORY_MAX_MESSAGES=6
 | --- | --- |
 | Abertura com credencial | Uma chamada isolada, sem estado/histórico/tools |
 | Abertura sem credencial ou inválida | Usa apresentação canônica |
-| Turno de triagem | Zero chamada |
-| Turno de Crédito, Entrevista ou Câmbio | No máximo uma chamada de redação |
+| Autenticação, encerramento ou rota clara | Zero chamada de classificação |
+| Rota pós-autenticação ambígua | Uma classificação, com fallback determinístico |
+| Turno de Crédito, Entrevista ou Câmbio | Uma redação; até duas chamadas se a rota foi ambígua |
 | Redação com fato novo ou marcador perdido | Usa a resposta canônica |
 | Prompt global + especialista | Abaixo do limite de caracteres |
 | Especialista ativo | Somente suas tools e seu prompt são enviados |

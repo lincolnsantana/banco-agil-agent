@@ -17,6 +17,7 @@ from banco_agil.domain.enums import (
     CreditRequestStatus,
     EmploymentType,
     EndReason,
+    Intent,
 )
 from banco_agil.domain.exceptions import IntegrationError
 from banco_agil.domain.models import Client, CreditRequest, ExchangeQuote
@@ -209,6 +210,17 @@ def test_triage_routes_to_credit_and_returns_final_reply_in_same_turn(
     assert isinstance(turn.history[1], AIMessage)
 
 
+def test_alter_limit_routes_to_increase_instead_of_consultation(client: Client) -> None:
+    harness = build_harness(client)
+    state = ConversationState(authenticated_client=client)
+
+    turn = harness.service.handle_turn(state, (), "quero alterar o meu limite")
+
+    assert "limite total" in turn.reply.casefold()
+    assert "2.500,00" not in turn.reply
+    assert state.intent is Intent.LIMIT_INCREASE
+
+
 def test_clear_request_uses_one_specialist_call_and_is_rewritten(
     client: Client,
 ) -> None:
@@ -311,10 +323,32 @@ def test_ambiguous_intent_falls_back_to_canonical_clarification(
 
     turn = harness.service.handle_turn(state, (), "preciso resolver outra coisa")
 
-    assert llm.calls == []
+    assert len(llm.calls) == 1
     assert state.active_agent is Agent.TRIAGE
     assert "limite" in turn.reply.casefold()
     assert "cotação" in turn.reply.casefold()
+
+
+def test_ambiguous_intent_uses_llm_then_specialist_rewriting(client: Client) -> None:
+    llm = RecordingLlm(
+        {
+            "intent": "limit_increase",
+            "reply": (
+                "Vamos analisar seu pedido. Qual limite total você gostaria de "
+                "ter? Por exemplo: [DADO_1]."
+            ),
+        }
+    )
+    harness = build_harness(client, llm)
+    state = ConversationState(authenticated_client=client)
+
+    turn = harness.service.handle_turn(state, (), "quero rever meu crédito")
+
+    assert state.active_agent is Agent.CREDIT
+    assert state.intent is Intent.LIMIT_INCREASE
+    assert "limite total" in turn.reply.casefold()
+    assert "4.000,00" in turn.reply
+    assert len(llm.calls) == 2
 
 
 def test_llm_receives_at_most_six_sanitized_conversation_messages(

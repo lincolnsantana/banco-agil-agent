@@ -38,9 +38,11 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
   retorna ao crédito para reanálise; `MAX_HANDLER_STEPS=2` + `recursion_limit=8`
   impedem loops; histórico limitado às 6 mensagens recentes.
 - **Nós** (`agents/triage.py`, `credit.py`, `credit_interview.py`,
-  `exchange.py`): triagem, autenticação e roteamento são determinísticos; Crédito,
-  Entrevista e Câmbio podem ter a resposta final redigida pelo Groq, com uma
-  chamada por turno e fallback canônico.
+  `exchange.py`): autenticação e rotas claras são determinísticas (parser
+  primeiro; `alterar/mudar/ajustar/modificar limite` é aumento); só intenção
+  pós-autenticação ambígua usa o Groq para classificar, sem rota direta para
+  entrevista; Crédito, Entrevista e Câmbio podem ter a resposta final redigida
+  pelo Groq, com fallback canônico.
 - **Prompts** (`prompts/`): um system message = global + especialista ativo +
   estado mínimo sanitizado (sem PII, < 500 caracteres); só as tools do
   especialista ativo são expostas; IDs/versões testados contra `PROMPTS.md`.
@@ -101,11 +103,14 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
 | Qualidade | Ruff + Mypy estrito + Pytest + RESPX | Contrato de cada tarefa do projeto |
 
 **Uso do LLM**: o Groq gera as boas-vindas por um prompt isolado, sem estado,
-histórico ou tools. A triagem não chama o modelo. Crédito, Entrevista e Câmbio
-usam no máximo uma chamada por turno para redigir o texto canônico com fatos
-mascarados. CPF, data, números, sim/não, cálculos, encerramento e autenticação
-continuam determinísticos. Temperatura `0.3`, saída de 500 tokens e timeout de
-30 s; saída inválida ou falha preserva integralmente a resposta canônica.
+histórico ou tools. Na triagem, autenticação, encerramento e rotas claras usam
+zero chamada; só texto pós-autenticação ambíguo usa uma chamada de
+classificação, com fallback determinístico. Crédito, Entrevista e Câmbio usam
+uma chamada por turno para redigir o texto canônico com fatos mascarados (até
+duas no turno com rota ambígua). CPF, data, números, sim/não, cálculos,
+encerramento e autenticação continuam determinísticos. Temperatura `0.3`, saída
+de 500 tokens e timeout de 30 s; saída inválida ou falha preserva integralmente
+a resposta canônica.
 
 **Limitações**: sem RAG/banco vetorial (fora do escopo); sem checkpoint de
 sessão persistente (T019, opcional); câmbio exige rede; LLM nunca decide regra
@@ -134,8 +139,9 @@ nenhuma chamada ao provedor é realizada. Com Groq ativo, cada especialista cria
 primeiro uma resposta canônica a partir das regras e tools em Python. O modelo
 gera a apresentação inicial e redige as respostas de Crédito, Entrevista e
 Câmbio a partir do canônico com fatos mascarados, sem alterar fatos, valores ou
-decisões. A triagem permanece determinística e cada turno especialista faz no
-máximo uma chamada.
+decisões. A triagem usa parser determinístico primeiro e só classifica via Groq
+quando a intenção continua ambígua; cada turno especialista faz no máximo uma
+chamada de redação.
 
 Roteiro na UI: informe o CPF → informe o nascimento → `qual é meu limite?`
 (`R$ 2.500,00`) → `quero aumentar meu limite` → `4000` → `Encerrar atendimento`

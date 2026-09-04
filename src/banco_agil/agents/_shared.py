@@ -33,6 +33,8 @@ _END_PATTERN = re.compile(
 _SAFE_LLM_WORDS = frozenset(
     {
         "ajuda",
+        "ajustar",
+        "alterar",
         "banco",
         "aumentar",
         "aumento",
@@ -42,6 +44,8 @@ _SAFE_LLM_WORDS = frozenset(
         "dolar",
         "euro",
         "limite",
+        "modificar",
+        "mudar",
         "quero",
         "saber",
         "taxa",
@@ -55,6 +59,7 @@ _SAFE_LLM_WORDS = frozenset(
         "outra",
         "preciso",
         "resolver",
+        "rever",
         "servico",
         "viagem",
     }

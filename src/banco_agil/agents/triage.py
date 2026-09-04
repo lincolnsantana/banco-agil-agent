@@ -1,24 +1,41 @@
-"""Nó de triagem integralmente determinístico."""
+"""Nó de triagem determinístico com fallback de intenção pelo LLM."""
 
 import re
+from collections.abc import Sequence
+
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from pydantic import BaseModel
 
 from banco_agil.agents._shared import (
     end_conversation,
     end_reply_if_requested,
     normalized_text,
+    sanitize_user_text,
 )
 from banco_agil.agents.state import ConversationState
 from banco_agil.domain.enums import Agent, EndReason, Intent
-from banco_agil.domain.exceptions import RepositoryError
+from banco_agil.domain.exceptions import IntegrationError, RepositoryError
 from banco_agil.domain.models import AuthenticationResult, CpfValidationResult
+from banco_agil.integrations.llm import StructuredLlm
+from banco_agil.prompts.renderer import render_prompt
 from banco_agil.services.authentication import AuthenticationService
 from banco_agil.tools.banking import authenticate_client, validate_client_cpf
+
+
+class IntentDecision(BaseModel):
+    """Intenção bancária classificada sem permitir escolha direta de agente."""
+
+    intent: Intent
 
 
 def handle_triage(
     state: ConversationState,
     user_text: str,
     service: AuthenticationService,
+    *,
+    llm: StructuredLlm | None = None,
+    turn_id: str = "",
+    recent_messages: Sequence[BaseMessage] = (),
 ) -> str:
     """Processa um turno de triagem e atualiza o estado confiavel."""
     end_reply = end_reply_if_requested(state, user_text)
@@ -29,12 +46,15 @@ def handle_triage(
         return _handle_authentication(state, user_text, service)
 
     intent = _deterministic_intent(user_text)
+    if intent is None:
+        intent = _llm_intent(state, user_text, llm, turn_id, recent_messages)
 
-    if intent is None or intent in {Intent.UNKNOWN, Intent.OTHER}:
+    if intent not in {
+        Intent.CREDIT_LIMIT,
+        Intent.LIMIT_INCREASE,
+        Intent.EXCHANGE_RATE,
+    }:
         return "Posso ajudar com limite de crédito ou cotação de moedas. O que deseja?"
-    if intent is Intent.END_SERVICE:
-        end_conversation(state, EndReason.USER_REQUEST)
-        return "Atendimento encerrado. Quando precisar, estaremos à disposição."
 
     state.intent = intent
     state.active_agent = (
@@ -111,8 +131,56 @@ def _deterministic_intent(user_text: str) -> Intent | None:
     normalized = normalized_text(user_text)
     if any(word in normalized for word in ("cambio", "cotacao", "dolar", "euro")):
         return Intent.EXCHANGE_RATE
-    if any(word in normalized for word in ("aumentar", "aumento", "novo limite")):
+    if any(term in normalized for term in ("aumentar", "aumento", "novo limite")):
+        return Intent.LIMIT_INCREASE
+    if "limite" in normalized and any(
+        term in normalized for term in ("alterar", "ajustar", "modificar", "mudar")
+    ):
         return Intent.LIMIT_INCREASE
     if "limite" in normalized:
         return Intent.CREDIT_LIMIT
     return None
+
+
+def _llm_intent(
+    state: ConversationState,
+    user_text: str,
+    llm: StructuredLlm | None,
+    turn_id: str,
+    recent_messages: Sequence[BaseMessage],
+) -> Intent | None:
+    """Classifica somente texto pós-autenticação não resolvido pelo parser."""
+    if llm is None or not turn_id:
+        return None
+    safe_user_text = sanitize_user_text(user_text)
+    if not safe_user_text:
+        return None
+    rendered = render_prompt(state)
+    messages: list[BaseMessage] = [
+        rendered.system_message,
+        *_sanitized_history(recent_messages),
+        HumanMessage(content=safe_user_text),
+    ]
+    try:
+        decision = llm.invoke_structured(
+            turn_id,
+            messages,
+            IntentDecision,
+            prompt_version=rendered.prompt_version,
+        )
+    except IntegrationError:
+        return None
+    return decision.intent
+
+
+def _sanitized_history(messages: Sequence[BaseMessage]) -> list[BaseMessage]:
+    sanitized: list[BaseMessage] = []
+    for message in messages[-5:]:
+        if not isinstance(message, (HumanMessage, AIMessage)):
+            continue
+        safe_content = sanitize_user_text(str(message.content))
+        if not safe_content:
+            continue
+        message_type = AIMessage if isinstance(message, AIMessage) else HumanMessage
+        sanitized.append(message_type(content=safe_content))
+    return sanitized

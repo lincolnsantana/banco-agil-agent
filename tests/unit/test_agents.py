@@ -350,18 +350,57 @@ def test_triage_third_failure_ends_without_disclosing_wrong_field() -> None:
     assert "nascimento" not in reply.casefold()
 
 
-def test_triage_routes_clear_intent_deterministically(client: Client) -> None:
+@pytest.mark.parametrize(
+    "user_text",
+    (
+        "quero aumentar meu limite",
+        "quero alterar o meu limite",
+        "preciso mudar meu limite",
+        "gostaria de ajustar o limite",
+        "quero modificar meu limite",
+    ),
+)
+def test_triage_routes_increase_synonyms_without_llm(
+    client: Client,
+    user_text: str,
+) -> None:
     state = ConversationState(authenticated_client=client)
+    llm = RecordingLlm({"intent": "other"})
 
     reply = handle_triage(
         state,
-        "quero aumentar meu limite",
+        user_text,
         FakeAuthenticationService(client),
+        llm=llm,
+        turn_id="clear-turn",
     )
 
     assert reply
     assert state.intent is Intent.LIMIT_INCREASE
     assert state.active_agent is Agent.CREDIT
+    assert llm.calls == []
+
+
+def test_triage_uses_llm_only_for_ambiguous_authenticated_intent(
+    client: Client,
+) -> None:
+    state = ConversationState(authenticated_client=client)
+    llm = RecordingLlm({"intent": "exchange_rate"})
+
+    handle_triage(
+        state,
+        "preciso resolver uma coisa do exterior",
+        FakeAuthenticationService(client),
+        llm=llm,
+        turn_id="ambiguous-turn",
+    )
+
+    assert state.intent is Intent.EXCHANGE_RATE
+    assert state.active_agent is Agent.EXCHANGE
+    assert len(llm.calls) == 1
+    _, messages, version = llm.calls[0]
+    assert version == "global@1.3.0+triage@1.4.0"
+    assert "exterior" in str(messages[-1].content)
 
 
 def test_triage_keeps_ambiguous_intent_in_triage(client: Client) -> None:

@@ -9,8 +9,9 @@ Dados fictícios: CPF `11144477735`, nascimento `20/05/1990`. Sem chave de LLM.
 - Mostre o fluxo em uma frase: `UI -> ConversationService -> Graph -> Tools ->
   Services -> CSV/SQLite/HTTP`.
 - Destaque: apresentação e três especialistas com Groq (fallback determinístico),
-  triagem sem LLM, no máximo 1 chamada por turno especialista, tools com estado
-  injetado e CPF sempre vindo do estado confiável.
+  triagem com parser primeiro e Groq só em intenção ambígua, no máximo 1 chamada
+  de redação por turno especialista, tools com estado injetado e CPF sempre
+  vindo do estado confiável.
 
 ## 0:45–2:00 — Triagem + Crédito (consulta e aumento)
 
@@ -19,7 +20,7 @@ Dados fictícios: CPF `11144477735`, nascimento `20/05/1990`. Sem chave de LLM.
 3. Envie `11144477735` direto na abertura → localiza o CPF e pede o nascimento.
 5. Envie `20/05/1990` → `Dados confirmados. Como posso ajudar hoje?`
 6. Envie `qual é meu limite?` → `Seu limite atual é R$ 2.500,00...`
-7. Envie `quero aumentar meu limite` → pergunta naturalmente o limite total.
+7. Envie `quero alterar meu limite` → entende como aumento e pergunta o limite total.
 8. Envie `4000` → pedido aprovado e registrado (limite cadastrado inalterado).
 
 Comente: decisão por faixa de score em `score_limite.csv`, uma linha por pedido.
