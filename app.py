@@ -137,16 +137,6 @@ body,
     box-shadow: 0 5px 18px var(--agil-shadow);
 }
 
-.chat-bubble::before {
-    content: "";
-    position: absolute;
-    top: 12px;
-    width: 10px;
-    height: 10px;
-    background: inherit;
-    transform: rotate(45deg);
-}
-
 .chat-bubble--assistant {
     margin-right: auto;
     border-color: var(--agil-assistant-border);
@@ -154,23 +144,11 @@ body,
     background: var(--agil-assistant-bubble);
 }
 
-.chat-bubble--assistant::before {
-    left: -7px;
-    border-bottom: 2px solid var(--agil-assistant-border);
-    border-left: 2px solid var(--agil-assistant-border);
-}
-
 .chat-bubble--user {
     margin-left: auto;
     border-color: var(--agil-user-border);
     border-top-right-radius: 5px;
     background: var(--agil-user-bubble);
-}
-
-.chat-bubble--user::before {
-    right: -7px;
-    border-top: 2px solid var(--agil-user-border);
-    border-right: 2px solid var(--agil-user-border);
 }
 
 [data-testid="stChatInput"] {
@@ -196,6 +174,46 @@ body,
     outline: none !important;
     box-shadow: none !important;
     caret-color: var(--agil-user-bubble);
+}
+
+.typing-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.32rem;
+    min-height: 42px;
+    padding: 0.65rem 0.9rem;
+    border: 2px solid var(--agil-assistant-border);
+    border-radius: 17px;
+    background: var(--agil-assistant-bubble);
+    box-shadow: 0 5px 18px var(--agil-shadow);
+}
+
+.typing-indicator__dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #ffffff;
+    animation: typing-bounce 1.15s infinite ease-in-out;
+}
+
+.typing-indicator__dot:nth-child(2) {
+    animation-delay: 0.15s;
+}
+
+.typing-indicator__dot:nth-child(3) {
+    animation-delay: 0.3s;
+}
+
+@keyframes typing-bounce {
+    0%, 60%, 100% {
+        opacity: 0.45;
+        transform: translateY(0);
+    }
+
+    30% {
+        opacity: 1;
+        transform: translateY(-4px);
+    }
 }
 
 @media (max-width: 640px) {
@@ -225,6 +243,17 @@ _PAGE_HEADING = """
     <h1 class="page-heading__title">🏦 Banco Ágil</h1>
     <p class="page-heading__subtitle">Atendimento digital</p>
 </header>
+"""
+
+_TYPING_INDICATOR = """
+<div class="chat-row chat-row--assistant" role="status" aria-label="Digitando">
+    <span class="chat-avatar" aria-hidden="true">🏦</span>
+    <span class="typing-indicator" aria-hidden="true">
+        <span class="typing-indicator__dot"></span>
+        <span class="typing-indicator__dot"></span>
+        <span class="typing-indicator__dot"></span>
+    </span>
+</div>
 """
 
 _CPF_FORMATTED_PATTERN = re.compile(r"\d{3}\.\d{3}\.\d{3}-\d{2}")
@@ -309,6 +338,11 @@ def chat_bubble_html(role: str, text: str) -> str:
         f'<div class="chat-bubble chat-bubble--{bubble_role}">'
         f"{safe_text}</div></div>"
     )
+
+
+def typing_indicator_html() -> str:
+    """Retorna o indicador acessível de resposta em andamento."""
+    return _TYPING_INDICATOR
 
 
 def render_chat_message(role: str, text: str) -> None:
@@ -454,10 +488,14 @@ def main() -> None:
     user_input = st.chat_input("Digite sua mensagem")
     if user_input is not None:
         render_chat_message("user", mask_sensitive_text(user_input.strip()))
-        with st.spinner("Digitando..."):
+        typing_placeholder = st.empty()
+        typing_placeholder.markdown(typing_indicator_html(), unsafe_allow_html=True)
+        try:
             submit_user_message(
                 session, service, user_input, generate_welcome_message(llm)
             )
+        finally:
+            typing_placeholder.empty()
         st.rerun()
 
 

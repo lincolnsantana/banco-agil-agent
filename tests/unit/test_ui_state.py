@@ -22,6 +22,7 @@ from app import (  # noqa: E402
     mask_sensitive_text,
     reset_conversation,
     submit_user_message,
+    typing_indicator_html,
 )
 from banco_agil.agents.state import ConversationState
 from banco_agil.config import Settings
@@ -239,6 +240,15 @@ def test_chat_bubbles_identify_roles_and_escape_content() -> None:
     assert "🏦" in assistant_bubble
     assert "Linha 1<br>Linha 2" in assistant_bubble
     assert "chat-bubble__sender" not in user_bubble + assistant_bubble
+
+
+def test_typing_indicator_uses_bank_and_three_animated_dots() -> None:
+    indicator = typing_indicator_html()
+
+    assert "🏦" in indicator
+    assert indicator.count('class="typing-indicator__dot"') == 3
+    assert 'aria-label="Digitando"' in indicator
+    assert "Digitando..." not in indicator
 
 
 def test_build_service_without_key_supports_deterministic_turns(

@@ -23,6 +23,8 @@ Cobertura automatizada correspondente em `tests/e2e/test_journeys.py`.
 5. Alterne o tema do Streamlit para escuro e confirme que página, header nativo,
    balões, texto e campo de mensagem ficam escuros e legíveis.
 6. Clique no campo de mensagem e confirme o contorno azul, sem borda vermelha.
+7. Envie uma mensagem e confira `🏦` com três pontos animados enquanto aguarda,
+   sem círculo de carregamento ou texto `Digitando...`.
 
 Resultado esperado: o assistente se apresenta, informa que atende limite,
 aumento, entrevista de crédito e câmbio, explica que a autenticação vem primeiro
