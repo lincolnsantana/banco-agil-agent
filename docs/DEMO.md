@@ -34,6 +34,9 @@ Comente: decisão por faixa de score em `score_limite.csv`, uma linha por pedido
 Comente: consentimento obrigatório, uma pergunta por vez, fórmula determinística,
 sem promessa de aprovação.
 
+Envie `como posso aumentar meu limite?` → explicação da entrevista de crédito e
+pedido de confirmação; responda `quero` → primeira pergunta sobre renda.
+
 ## 4:00–5:00 — Câmbio e encerramento
 
 1. Envie `qual a cotação do euro?` ou `cotação do dólar` sem informar par →

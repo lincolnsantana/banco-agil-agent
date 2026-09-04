@@ -486,14 +486,28 @@ def test_triage_classifies_ambiguous_help_with_llm(client: Client) -> None:
 
 
 @pytest.mark.parametrize(
-    ("user_text", "expected_topic"),
+    ("user_text", "expected_topic", "expected_text"),
     (
-        ("como posso aumentar o meu limite?", Intent.LIMIT_INCREASE),
-        ("como consulto o dólar?", Intent.EXCHANGE_RATE),
+        (
+            "como posso aumentar o meu limite?",
+            Intent.CREDIT_INTERVIEW,
+            "entrevista de crédito",
+        ),
+        (
+            "como aumentar meu score?",
+            Intent.CREDIT_INTERVIEW,
+            "entrevista de crédito",
+        ),
+        (
+            "é possível aumentar meu limite?",
+            Intent.CREDIT_INTERVIEW,
+            "entrevista de crédito",
+        ),
+        ("como consulto o dólar?", Intent.EXCHANGE_RATE, "faça isso agora"),
     ),
 )
 def test_howto_explains_and_asks_for_confirmation(
-    client: Client, user_text: str, expected_topic: Intent
+    client: Client, user_text: str, expected_topic: Intent, expected_text: str
 ) -> None:
     state = ConversationState(authenticated_client=client)
     llm = RecordingLlm({"intent": "other"})
@@ -506,7 +520,7 @@ def test_howto_explains_and_asks_for_confirmation(
         turn_id="howto-turn",
     )
 
-    assert "Quer que eu faça isso agora?" in reply
+    assert expected_text in reply.casefold()
     assert state.pending_flow is expected_topic
     assert state.active_agent is Agent.TRIAGE
     assert llm.calls == []
@@ -514,13 +528,13 @@ def test_howto_explains_and_asks_for_confirmation(
 
 def test_howto_affirmative_continues_to_specialist(client: Client) -> None:
     state = ConversationState(
-        authenticated_client=client, pending_flow=Intent.LIMIT_INCREASE
+        authenticated_client=client, pending_flow=Intent.CREDIT_INTERVIEW
     )
 
     reply = handle_triage(state, "quero sim", FakeAuthenticationService(client))
 
-    assert state.intent is Intent.LIMIT_INCREASE
-    assert state.active_agent is Agent.CREDIT
+    assert state.intent is Intent.CREDIT_INTERVIEW
+    assert state.active_agent is Agent.CREDIT_INTERVIEW
     assert state.pending_flow is None
     assert "prosseguir" in reply.casefold()
 
@@ -540,13 +554,13 @@ def test_howto_affirmative_continues_to_specialist(client: Client) -> None:
 )
 def test_howto_accepts_natural_affirmative_answers(client: Client, answer: str) -> None:
     state = ConversationState(
-        authenticated_client=client, pending_flow=Intent.LIMIT_INCREASE
+        authenticated_client=client, pending_flow=Intent.CREDIT_INTERVIEW
     )
 
     handle_triage(state, answer, FakeAuthenticationService(client))
 
-    assert state.intent is Intent.LIMIT_INCREASE
-    assert state.active_agent is Agent.CREDIT
+    assert state.intent is Intent.CREDIT_INTERVIEW
+    assert state.active_agent is Agent.CREDIT_INTERVIEW
     assert state.pending_flow is None
 
 
@@ -586,8 +600,8 @@ def test_howto_interview_routes_with_consent_question(client: Client) -> None:
     )
 
     assert "5 perguntas" in reply
-    assert state.intent is Intent.CREDIT_INTERVIEW
-    assert state.active_agent is Agent.CREDIT_INTERVIEW
+    assert state.pending_flow is Intent.CREDIT_INTERVIEW
+    assert state.active_agent is Agent.TRIAGE
 
 
 def test_howto_limit_consult_routes_directly(client: Client) -> None:

@@ -89,29 +89,26 @@ def handle_triage(
 
 
 def _handle_howto(state: ConversationState, topic: Intent) -> str:
-    """Explica o fluxo e confirma antes de iniciar aumento ou câmbio."""
+    """Explica o fluxo e confirma antes de iniciar entrevista ou câmbio."""
     if topic is Intent.CREDIT_LIMIT:
         state.intent = Intent.CREDIT_LIMIT
         state.active_agent = Agent.CREDIT
         return "Certo. Vou prosseguir com sua solicitação."
-    if topic is Intent.CREDIT_INTERVIEW:
-        state.intent = Intent.CREDIT_INTERVIEW
-        state.active_agent = Agent.CREDIT_INTERVIEW
+    if topic in {Intent.CREDIT_INTERVIEW, Intent.LIMIT_INCREASE}:
+        state.pending_flow = Intent.CREDIT_INTERVIEW
+        state.intent = Intent.UNKNOWN
+        state.active_agent = Agent.TRIAGE
         return (
-            "Na entrevista, faço 5 perguntas — renda, emprego, despesas, "
-            "dependentes e dívidas —, recalculo seu score e, se houver um "
-            "pedido rejeitado, reanaliso na hora. Deseja realizar a "
-            "entrevista de crédito agora?"
+            "Para verificar se é possível melhorar seu score e aumentar seu "
+            "limite, posso fazer uma entrevista de crédito. São 5 perguntas "
+            "sobre renda, emprego, despesas, dependentes e dívidas; com as "
+            "respostas, recalculo seu score, sem garantir aprovação. Quer "
+            "realizar a entrevista agora?"
         )
     if topic is Intent.EXCHANGE_RATE:
         explanation = (
             "Para consultar, basta dizer o nome da moeda, como dólar ou euro. "
             "Se quiser outra conversão, também pode informar um par, como EUR-USD."
-        )
-    else:
-        explanation = (
-            "Para aumentar, você me informa o novo limite total desejado; eu "
-            "registro o pedido e avalio na hora pelo seu score."
         )
     state.pending_flow = topic
     state.intent = Intent.UNKNOWN
@@ -126,9 +123,12 @@ def _handle_flow_answer(state: ConversationState, user_text: str) -> str:
     if answer is True and target is not None:
         state.pending_flow = None
         state.intent = target
-        state.active_agent = (
-            Agent.EXCHANGE if target is Intent.EXCHANGE_RATE else Agent.CREDIT
-        )
+        if target is Intent.EXCHANGE_RATE:
+            state.active_agent = Agent.EXCHANGE
+        elif target is Intent.CREDIT_INTERVIEW:
+            state.active_agent = Agent.CREDIT_INTERVIEW
+        else:
+            state.active_agent = Agent.CREDIT
         return "Certo. Vou prosseguir com sua solicitação."
     if answer is False:
         state.pending_flow = None

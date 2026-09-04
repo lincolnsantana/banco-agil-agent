@@ -119,6 +119,8 @@ _HOWTO_MARKERS = (
     "como consultar",
     "como consulto",
     "como aumento",
+    "como aumentar",
+    "como melhorar",
     "como ver",
     "como vejo",
     "como funciona",
@@ -129,6 +131,11 @@ _HOWTO_MARKERS = (
     "passo a passo",
     "quais sao os passos",
     "o que preciso para",
+    "posso aumentar",
+    "e possivel aumentar",
+    "tem como aumentar",
+    "por que nao consigo aumentar",
+    "porque nao consigo aumentar",
 )
 
 _FLOW_AFFIRMATIVE_WORDS = frozenset(

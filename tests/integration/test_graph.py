@@ -381,23 +381,20 @@ def test_ended_turn_points_to_cpf_for_new_attendance(client: Client) -> None:
     assert "CPF" in turn.reply
 
 
-def test_howto_increase_confirms_then_runs_specialist_flow(
+def test_howto_increase_guides_to_credit_interview(
     client: Client,
 ) -> None:
     harness = build_harness(client)
     state = ConversationState(authenticated_client=client)
 
     turn = harness.service.handle_turn(state, (), "como posso aumentar o meu limite?")
-    assert "Quer que eu faça isso agora?" in turn.reply
-    assert state.pending_flow is Intent.LIMIT_INCREASE
+    assert "entrevista de crédito" in turn.reply.casefold()
+    assert "sem garantir aprovação" in turn.reply.casefold()
+    assert state.pending_flow is Intent.CREDIT_INTERVIEW
 
     turn = harness.service.handle_turn(state, turn.history, "sim, quero")
-    assert "limite total" in turn.reply.casefold()
+    assert "renda mensal" in turn.reply.casefold()
     assert state.pending_flow is None
-
-    turn = harness.service.handle_turn(state, turn.history, "4000")
-    assert "aprovado" in turn.reply.casefold()
-    assert harness.clients.client.credit_limit == Decimal("4000.00")
 
 
 def test_score_review_routes_to_interview_and_asks_consent(client: Client) -> None:
@@ -569,7 +566,7 @@ def test_llm_receives_at_most_six_sanitized_conversation_messages(
     assert "01234567890" not in str(sent_messages)
 
 
-def test_history_keeps_only_six_recent_messages(client: Client) -> None:
+def test_history_keeps_all_messages_for_display(client: Client) -> None:
     harness = build_harness(client)
     state = ConversationState()
     history: tuple[BaseMessage, ...] = ()
@@ -578,8 +575,13 @@ def test_history_keeps_only_six_recent_messages(client: Client) -> None:
         turn = harness.service.handle_turn(state, history, text)
         history = turn.history
 
-    assert len(history) == 6
+    assert len(history) == 8
     assert [message.content for message in history] == [
+        "mensagem zero",
+        (
+            "Antes de continuar, precisamos validar alguns dados para proteger seu "
+            "atendimento. Por favor, informe seu CPF com 11 dígitos."
+        ),
         "mensagem um",
         (
             "Antes de continuar, precisamos validar alguns dados para proteger seu "

@@ -68,6 +68,10 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
 - Entrevista de crédito direta (pedido de score) ou após rejeição, com consentimento e reanálise quando houver limite pendente.
 - Cotação de moedas por nome (`dólar`, `euro`, `iene` etc.) ou par (`EUR-USD`),
   com tratamento humanizado de indisponibilidade e sem inventar valores.
+- Dúvidas sobre como aumentar limite ou score orientam a entrevista de crédito;
+  pedidos diretos de novo limite continuam sendo avaliados pelo score atual.
+- Histórico completo permanece visível enquanto a aba estiver aberta; somente
+  as seis mensagens mais recentes são enviadas ao grafo e ao Groq.
 - Encerramento (`encerrar`, `sair`, `finalizar`…) prioritário em qualquer nó.
 - Pergunta sobre o atendimento (`o que você pode fazer?`) respondida em
   qualquer nó, exceto dentro da entrevista.

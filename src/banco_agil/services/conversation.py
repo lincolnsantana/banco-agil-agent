@@ -7,7 +7,7 @@ from time import perf_counter
 from typing import cast
 from uuid import uuid4
 
-from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from banco_agil.agents.graph import ConversationGraph, SessionCheckpointStore
 from banco_agil.agents.router import GraphState
@@ -152,9 +152,14 @@ class ConversationService:
                 )
             },
         )
+        display_history = (
+            *history,
+            HumanMessage(content=normalized_text),
+            AIMessage(content=result["reply"]),
+        )
         return ConversationTurn(
             state=result["conversation"],
-            history=tuple(result["messages"]),
+            history=display_history,
             reply=result["reply"],
         )
 

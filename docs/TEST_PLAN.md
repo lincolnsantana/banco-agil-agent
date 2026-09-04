@@ -70,6 +70,16 @@ Resultado esperado: par, valor, fonte e horário confirmados
 `A cotação está indisponível no momento. Tente novamente mais tarde.`, sem
 nenhum valor inventado e sem detalhe técnico.
 
+## CT08 — Dúvidas de limite/score e histórico
+
+1. Envie `como posso aumentar meu limite?` ou `como aumentar meu score?`.
+2. Confirme com `quero`, `vamos fazer` ou outra afirmativa natural.
+3. Continue enviando mensagens até ultrapassar seis itens no chat.
+
+Resultado esperado: o bot orienta a entrevista sem prometer aprovação, inicia
+pela renda após a confirmação e mantém todas as mensagens visíveis na aba. O
+contexto interno enviado ao Groq continua limitado às seis mais recentes.
+
 ## CT05 — Três falhas e encerramento
 
 1. Envie `01234567890` e `01/01/2000` três vezes (reinformando o CPF a cada vez).
