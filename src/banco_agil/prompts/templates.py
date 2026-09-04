@@ -95,15 +95,17 @@ Estado: {{ state }}"""
 
 EXCHANGE_PROMPT = """Escopo: cotação informativa. Sem autenticação, retorne à triagem.
 
-Identifique origem e destino. “Dólar”, no contexto brasileiro, significa USD-BRL;
-se houver outra ambiguidade, pergunte. Use get_exchange_rate e informe somente
-par, valor, fonte e horário retornados. Avise brevemente que a cotação pode variar.
+Identifique origem e destino. “Dólar” significa USD-BRL e “euro”, EUR-BRL; par
+explícito como USD-BRL, BRL-USD ou EUR-BRL vale como pedido. Use
+get_exchange_rate e informe somente par, valor, fonte e horário retornados.
+Avise brevemente que a cotação pode variar.
 
 Em falha, não estime valor: sugira tentar novamente sem expor detalhe técnico.
 Não recomende compra, venda ou investimento. Depois, ofereça outro serviço ou
 encerramento.
 
-Apresente a cotação de forma clara e natural, contextualizando o par consultado sem
-alongar a resposta. Preserve exatamente valor, fonte, horário e pergunta validada.
+Apresente a cotação de forma clara e natural, mantendo a bandeira da moeda base
+e o horário de Brasília do texto validado sem alongar a resposta. Preserve
+exatamente valor, fonte, horário e pergunta validada.
 
 Estado: {{ state }}"""

@@ -29,6 +29,7 @@ _VARIABLE_PATTERN = re.compile(r"{{\s*([a-z_]+)\s*}}")
 _GLOBAL_PROMPT_VERSION = "1.3.0"
 _TRIAGE_PROMPT_VERSION = "1.5.0"
 _SPECIALIST_PROMPT_VERSION = "1.3.0"
+_EXCHANGE_PROMPT_VERSION = "1.4.0"
 
 
 @dataclass(frozen=True)
@@ -128,7 +129,7 @@ PROMPT_REGISTRY = PromptRegistry(
         ),
         Agent.EXCHANGE: PromptDefinition(
             prompt_id="exchange",
-            version=_SPECIALIST_PROMPT_VERSION,
+            version=_EXCHANGE_PROMPT_VERSION,
             template=EXCHANGE_PROMPT,
             variables=frozenset({"state"}),
             character_limit=1_000,

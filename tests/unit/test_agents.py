@@ -269,7 +269,8 @@ def test_humanization_rewrites_reply_without_exposing_data(
 
     assert reply == "Claro! Resposta canônica com R$ 2.500,00."
     _, messages, version = llm.calls[0]
-    assert version == f"global@1.3.0+{agent.value}@1.3.0"
+    expected_version = "1.4.0" if agent is Agent.EXCHANGE else "1.3.0"
+    assert version == f"global@1.3.0+{agent.value}@{expected_version}"
     assert "01234567890" not in str(messages)
     assert "2.500,00" not in str(messages)
     assert "R$ 2.500,00" not in str(messages)
@@ -691,8 +692,49 @@ def test_exchange_maps_dollar_and_returns_confirmed_quote(client: Client) -> Non
     reply = handle_exchange(state, "cotação do dólar", service)
 
     assert service.calls == [("USD", "BRL")]
-    assert all(value in reply for value in ("USD-BRL", "5,25", "AwesomeAPI"))
-    assert "2026-09-03" in reply
+    assert all(
+        value in reply
+        for value in ("🇺🇸", "dólar", "5,25", "09:00", "Brasília", "AwesomeAPI")
+    )
+    assert "USD-BRL" not in reply
+
+
+@pytest.mark.parametrize(
+    ("user_text", "expected_pair", "expected_markers"),
+    (
+        ("BRL-USD", ("BRL", "USD"), ("🇧🇷", "BRL-USD")),
+        ("EUR-BRL", ("EUR", "BRL"), ("🇪🇺", "euro")),
+        ("qual o valor do euro hoje?", ("EUR", "BRL"), ("🇪🇺", "euro")),
+        ("qual o valor do dólar hoje?", ("USD", "BRL"), ("🇺🇸", "dólar")),
+    ),
+)
+def test_exchange_accepts_free_pair_forms(
+    client: Client,
+    user_text: str,
+    expected_pair: tuple[str, str],
+    expected_markers: tuple[str, str],
+) -> None:
+    quote = ExchangeQuote(
+        base_currency=expected_pair[0],
+        quote_currency=expected_pair[1],
+        rate=Decimal("5.25"),
+        source="AwesomeAPI",
+        quoted_at=datetime(2026, 9, 3, 12, 0, tzinfo=UTC),
+    )
+    service = FakeExchangeService(ExchangeRateResult(quote=quote))
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.EXCHANGE,
+        intent=Intent.EXCHANGE_RATE,
+    )
+
+    reply = handle_exchange(state, user_text, service)
+
+    assert service.calls == [expected_pair]
+    assert all(marker in reply for marker in expected_markers)
+    assert "09:00" in reply
+    assert "Brasília" in reply
+    assert "AwesomeAPI" in reply
 
 
 def test_exchange_failure_never_invents_rate(client: Client) -> None:

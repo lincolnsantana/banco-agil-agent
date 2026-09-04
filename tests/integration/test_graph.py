@@ -259,8 +259,34 @@ def test_triage_routes_to_exchange_in_same_turn(client: Client) -> None:
     turn = harness.service.handle_turn(state, (), "cotação do dólar")
 
     assert harness.exchange.calls == [("USD", "BRL")]
-    assert "USD-BRL" in turn.reply
+    assert "🇺🇸" in turn.reply
+    assert "dólar" in turn.reply
     assert "5,25" in turn.reply
+    assert "Brasília" in turn.reply
+
+
+def test_exchange_answer_is_rewritten_by_llm_without_changing_facts(
+    client: Client,
+) -> None:
+    llm = RecordingLlm(
+        {
+            "reply": (
+                "🇺🇸 O dólar está em [DADO_1] "
+                "(última atualização às [DADO_2]:[DADO_3] horário de Brasília, "
+                "fonte Fonte Fictícia). Posso ajudar em algo mais?"
+            ),
+        }
+    )
+    harness = build_harness(client, llm)
+    state = ConversationState(authenticated_client=client)
+
+    turn = harness.service.handle_turn(state, (), "qual o valor do dólar hoje?")
+
+    assert "🇺🇸" in turn.reply
+    assert "5,25" in turn.reply
+    assert "09:00" in turn.reply
+    assert "Fonte Fictícia" in turn.reply
+    assert len(llm.calls) == 1
 
 
 def test_approved_increase_updates_client_limit(client: Client) -> None:

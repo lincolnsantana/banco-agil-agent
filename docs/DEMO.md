@@ -36,7 +36,7 @@ sem promessa de aprovação.
 
 ## 4:00–5:00 — Câmbio e encerramento
 
-1. Envie `cotação do dólar` → par, valor, fonte e horário (com rede).
+1. Envie `cotação do dólar` → `🇺🇸 O dólar está em R$ 5,25 (última atualização às HH:MM horário de Brasília, fonte ...)` (com rede).
 2. Sem rede: a mesma pergunta retorna indisponibilidade controlada, sem valor
    inventado.
 3. Envie `encerrar` → atendimento finalizado; `Reiniciar atendimento` limpa a

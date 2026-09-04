@@ -1,6 +1,8 @@
 """No de cambio com parser deterministico e cotacao confirmada."""
 
 import re
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from banco_agil.agents._shared import (
     authentication_reply_if_missing,
@@ -15,11 +17,27 @@ from banco_agil.domain.models import ExchangeRateResult
 from banco_agil.services.exchange import ExchangeService
 from banco_agil.tools.banking import get_exchange_rate
 
+_BRASILIA_TZ = ZoneInfo("America/Sao_Paulo")
+
 _CURRENCY_NAMES = {
     "dolar": "USD",
     "euro": "EUR",
     "libra": "GBP",
     "real": "BRL",
+}
+
+_CURRENCY_FLAGS = {
+    "USD": "🇺🇸",
+    "EUR": "🇪🇺",
+    "GBP": "🇬🇧",
+    "BRL": "🇧🇷",
+}
+
+_CURRENCY_LABELS = {
+    "USD": "dólar",
+    "EUR": "euro",
+    "GBP": "libra",
+    "BRL": "real",
 }
 
 
@@ -59,11 +77,41 @@ def handle_exchange(
     quote = result.quote
     state.intent = Intent.UNKNOWN
     state.active_agent = Agent.TRIAGE
+    return _format_quote(
+        quote.base_currency,
+        quote.quote_currency,
+        format_money(quote.rate),
+        quote.source,
+        _brasilia_time(quote.quoted_at),
+    )
+
+
+def _brasilia_time(quoted_at: datetime) -> str:
+    """Converte o instante da cotação para HH:MM no horário de Brasília."""
+    return quoted_at.astimezone(_BRASILIA_TZ).strftime("%H:%M")
+
+
+def _format_quote(
+    base_currency: str,
+    quote_currency: str,
+    formatted_rate: str,
+    source: str,
+    brasilia_time: str,
+) -> str:
+    """Monta o canônico amigável; o Groq só reescreve via `humanize_reply`."""
+    flag = _CURRENCY_FLAGS.get(base_currency, "")
+    prefix = f"{flag} " if flag else ""
+    if quote_currency == "BRL":
+        label = _CURRENCY_LABELS.get(base_currency, base_currency)
+        return (
+            f"{prefix}O {label} está em R$ {formatted_rate} "
+            f"(última atualização às {brasilia_time} horário de Brasília, "
+            f"fonte {source}). Posso ajudar em algo mais?"
+        )
     return (
-        f"A cotação {quote.base_currency}-{quote.quote_currency} é "
-        f"{format_money(quote.rate)}, fonte {quote.source}, em "
-        f"{quote.quoted_at.isoformat()}. O valor pode variar. "
-        "Posso ajudar em algo mais?"
+        f"{prefix}A cotação {base_currency}-{quote_currency} é {formatted_rate} "
+        f"(última atualização às {brasilia_time} horário de Brasília, "
+        f"fonte {source}). Posso ajudar em algo mais?"
     )
 
 
