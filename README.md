@@ -77,8 +77,8 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
   qualquer nó, exceto dentro da entrevista.
 - UI Streamlit sem botões: cada solicitação pergunta se deseja continuar ou
   encerrar; após o encerramento, informar o CPF inicia outro atendimento.
-  Sessão persistente, mascaramento de dados, tipografia Inter, navbar própria,
-  avatares por emoji e balões responsivos.
+  Sessão persistente, mascaramento de dados, tipografia Inter, cabeçalho simples,
+  avatares por emoji, balões responsivos e temas claro/escuro consistentes.
 - Auditoria técnica consultável por sessão + métricas por chamada de LLM.
 - Mais de 200 testes (unitários, integração e E2E) + `docs/TEST_PLAN.md` de
   homologação.

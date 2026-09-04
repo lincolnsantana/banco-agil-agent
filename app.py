@@ -37,9 +37,13 @@ _UI_STYLES = """
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-    --agil-blue: #123b6d;
-    --agil-border: #dce3eb;
-    --agil-muted: #607086;
+    --agil-surface: var(--background-color);
+    --agil-surface-muted: var(--secondary-background-color);
+    --agil-text: var(--text-color);
+    --agil-accent: var(--primary-color);
+    --agil-border: color-mix(in srgb, var(--text-color) 18%, transparent);
+    --agil-muted: color-mix(in srgb, var(--text-color) 68%, transparent);
+    --agil-shadow: color-mix(in srgb, var(--text-color) 10%, transparent);
 }
 
 html,
@@ -51,8 +55,9 @@ body,
 
 [data-testid="stAppViewContainer"],
 [data-testid="stMain"],
-[data-testid="stHeader"] {
-    background: #ffffff;
+[data-testid="stHeader"],
+[data-testid="stBottom"] {
+    background: var(--agil-surface);
 }
 
 [data-testid="stMainBlockContainer"] {
@@ -61,43 +66,24 @@ body,
     padding-bottom: 7rem;
 }
 
-.bank-navbar {
-    position: sticky;
-    top: 0.5rem;
-    z-index: 20;
-    display: flex;
-    align-items: center;
-    gap: 0.8rem;
-    min-height: 64px;
-    margin-bottom: 1.5rem;
-    padding: 0.75rem 1rem;
-    border: 1px solid var(--agil-border);
-    border-radius: 16px;
-    background: rgba(255, 255, 255, 0.96);
-    box-shadow: 0 8px 28px rgba(18, 59, 109, 0.08);
-    backdrop-filter: blur(12px);
+.page-heading {
+    margin: 0 0 1.5rem;
+    padding: 0.25rem 0;
 }
 
-.bank-navbar__icon {
-    display: grid;
-    width: 42px;
-    height: 42px;
-    place-items: center;
-    border-radius: 12px;
-    background: #edf4fb;
-    font-size: 1.4rem;
-}
-
-.bank-navbar__title {
-    color: var(--agil-blue);
-    font-size: 1.05rem;
+.page-heading__title {
+    margin: 0;
+    color: var(--agil-text);
+    font-size: clamp(1.55rem, 4vw, 2rem);
     font-weight: 700;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.035em;
+    line-height: 1.15;
 }
 
-.bank-navbar__subtitle {
+.page-heading__subtitle {
+    margin: 0.35rem 0 0;
     color: var(--agil-muted);
-    font-size: 0.78rem;
+    font-size: 0.9rem;
     font-weight: 500;
 }
 
@@ -108,14 +94,16 @@ body,
     padding: 0.8rem 1rem;
     border: 1px solid var(--agil-border);
     border-radius: 18px;
-    background: #ffffff;
-    box-shadow: 0 3px 14px rgba(18, 59, 109, 0.06);
+    color: var(--agil-text);
+    background: var(--agil-surface);
+    box-shadow: 0 3px 14px var(--agil-shadow);
 }
 
 [data-testid="stChatMessage"][aria-label="Chat message from user"] {
     margin-left: auto;
-    border-color: #b9cee4;
+    border-color: color-mix(in srgb, var(--agil-accent) 42%, var(--agil-border));
     border-bottom-right-radius: 5px;
+    background: var(--agil-surface-muted);
 }
 
 [data-testid="stChatMessage"][aria-label="Chat message from assistant"] {
@@ -124,15 +112,16 @@ body,
 }
 
 [data-testid="stChatMessageContent"] p {
-    color: #17263a;
+    color: var(--agil-text);
     line-height: 1.55;
 }
 
 [data-testid="stChatInput"] {
     border-color: var(--agil-border);
     border-radius: 16px;
-    background: #ffffff;
-    box-shadow: 0 8px 24px rgba(18, 59, 109, 0.1);
+    color: var(--agil-text);
+    background: var(--agil-surface);
+    box-shadow: 0 8px 24px var(--agil-shadow);
 }
 
 [data-testid="stChatInput"] textarea {
@@ -144,11 +133,8 @@ body,
         padding: 0.75rem 0.8rem 6.5rem;
     }
 
-    .bank-navbar {
-        top: 0.25rem;
-        min-height: 58px;
+    .page-heading {
         margin-bottom: 1rem;
-        border-radius: 14px;
     }
 
     [data-testid="stChatMessage"] {
@@ -158,14 +144,11 @@ body,
 </style>
 """
 
-_NAVBAR = """
-<nav class="bank-navbar" aria-label="Banco Ágil">
-    <span class="bank-navbar__icon" aria-hidden="true">🏦</span>
-    <span>
-        <span class="bank-navbar__title">Banco Ágil</span><br>
-        <span class="bank-navbar__subtitle">Atendimento digital</span>
-    </span>
-</nav>
+_PAGE_HEADING = """
+<header class="page-heading">
+    <h1 class="page-heading__title">🏦 Banco Ágil</h1>
+    <p class="page-heading__subtitle">Atendimento digital</p>
+</header>
 """
 
 _CPF_FORMATTED_PATTERN = re.compile(r"\d{3}\.\d{3}\.\d{3}-\d{2}")
@@ -355,7 +338,7 @@ def main() -> None:
     """Renderiza o chat e encaminha cada entrada ao serviço de conversa."""
     st.set_page_config(page_title="Banco Ágil - Atendimento", page_icon="🏦")
     st.markdown(_UI_STYLES, unsafe_allow_html=True)
-    st.markdown(_NAVBAR, unsafe_allow_html=True)
+    st.markdown(_PAGE_HEADING, unsafe_allow_html=True)
     settings = Settings()
     st.caption(llm_status_message(settings))
     session = cast(MutableMapping[str, object], st.session_state)
