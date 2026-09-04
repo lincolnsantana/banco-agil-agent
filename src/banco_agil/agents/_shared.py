@@ -296,6 +296,14 @@ _FACT_PATTERN = re.compile(
     r"\b[A-Z]{3}-[A-Z]{3}\b|\b\d{4}-\d{2}-\d{2}\b|(?:R\$\s*)?(?:\d[\d.,]*\d|\d)"
 )
 _FACT_TOKEN_PATTERN = re.compile(r"\[DADO_\d+\]")
+_USER_TEXT_LIMIT = 280
+_MASKED_NUMBER = "esse valor"
+_CONTROL_PATTERN = re.compile(r"[\x00-\x1f\x7f]+")
+# Colchetes sairiam caros: o cliente poderia forjar um marcador [DADO_N].
+_STRUCTURE_PATTERN = re.compile(r"[`<>{}\[\]|]+")
+_CPF_TEXT_PATTERN = re.compile(r"\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b")
+_DATE_TEXT_PATTERN = re.compile(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b")
+_NUMBER_TEXT_PATTERN = re.compile(r"(?:R\$\s*)?\d[\d.,]*")
 _LEAK_PHRASES = (
     "system prompt",
     "prompt do sistema",
@@ -304,6 +312,7 @@ _LEAK_PHRASES = (
     "minhas instrucoes",
     "regras internas",
     "contexto seguro",
+    "pergunta do cliente",
     "texto validado",
     "dado_n",
 )
@@ -370,9 +379,29 @@ def parse_confirmation(value: str) -> bool | None:
 
 
 def sanitize_user_text(value: str) -> str:
-    """Seleciona somente termos nao sensiveis antes de chamar o LLM."""
+    """Seleciona somente termos nao sensiveis antes de chamar o LLM.
+
+    Usado onde a entrada alimenta classificacao de intencao, nao redacao: ali
+    o texto livre nao acrescenta nada e so amplia a superficie de injecao.
+    """
     words = re.findall(r"[a-z]+", normalized_text(value))
     return " ".join(word for word in words if word in _SAFE_LLM_WORDS)
+
+
+def mask_user_text(value: str) -> str:
+    """Preserva a pergunta do cliente sem PII, numero ou marcacao estrutural.
+
+    A redacao dos especialistas precisa do texto real para responder no tom de
+    quem perguntou. O que nao pode viajar e o dado sensivel: CPF e nascimento
+    somem, numeros viram termo neutro e caracteres de controle e de estrutura
+    sao descartados para nao abrirem espaco a injecao de instrucao.
+    """
+    without_control = _CONTROL_PATTERN.sub(" ", value)
+    without_pii = _CPF_TEXT_PATTERN.sub(" ", without_control)
+    without_pii = _DATE_TEXT_PATTERN.sub(" ", without_pii)
+    without_numbers = _NUMBER_TEXT_PATTERN.sub(_MASKED_NUMBER, without_pii)
+    collapsed = " ".join(_STRUCTURE_PATTERN.sub(" ", without_numbers).split())
+    return collapsed[:_USER_TEXT_LIMIT].strip()
 
 
 def humanize_reply(
@@ -405,17 +434,18 @@ def humanize_reply(
     prompt_state = state.model_copy(deep=True)
     prompt_state.active_agent = responding_agent
     rendered = render_prompt(prompt_state)
-    safe_user_text = sanitize_user_text(user_text) or "pedido bancario"
+    safe_user_text = mask_user_text(user_text) or "pedido bancario"
     messages: list[BaseMessage] = [
         rendered.system_message,
         *_safe_history(recent_messages),
         HumanMessage(
             content=(
                 "Redija a resposta final completa a partir do texto validado "
-                "abaixo. Preserve cada marcador [DADO_N] exatamente como está, "
-                "sem criar fatos, números, decisões ou perguntas novos. "
-                f"Texto validado: {masked_reply} "
-                f"Contexto seguro: {safe_user_text}."
+                "abaixo, reconhecendo o que o cliente pediu e respondendo no "
+                "tom dele. Preserve cada marcador [DADO_N] exatamente como "
+                "está, sem criar fatos, números, decisões ou perguntas novos. "
+                f"Pergunta do cliente: {safe_user_text} "
+                f"Texto validado: {masked_reply}"
             )
         ),
     ]
@@ -486,7 +516,7 @@ def _preserves_decision(rewritten: str, canonical_reply: str) -> bool:
 def _safe_history(messages: Sequence[BaseMessage]) -> list[BaseMessage]:
     safe_messages: list[BaseMessage] = []
     for message in messages[-5:]:
-        safe_content = sanitize_user_text(str(message.content))
+        safe_content = mask_user_text(str(message.content))
         if not safe_content:
             continue
         message_type = AIMessage if isinstance(message, AIMessage) else HumanMessage

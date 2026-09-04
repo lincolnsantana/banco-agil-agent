@@ -283,6 +283,17 @@ body,
     line-height: 1.12;
 }
 
+/* O bloco da tela inicial e um flex column com min-height para centralizar;
+   sem travar a base, o campo absorve a sobra vertical e estica. O campo do
+   chat nao passa por isso porque mora na barra inferior. */
+.st-key-landing_input,
+.st-key-landing_input [data-testid="stElementContainer"],
+.st-key-landing_input [data-testid="stChatInput"],
+.st-key-landing_input [data-testid="stChatInput"] > div {
+    flex: 0 0 auto;
+    height: auto;
+}
+
 .st-key-landing_input {
     animation: agil-rise 560ms var(--agil-ease) 90ms both;
 }

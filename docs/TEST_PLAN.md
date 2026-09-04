@@ -51,13 +51,15 @@ de mensagem permanecem legíveis nos dois tamanhos de tela.
    `11144477735`.
 4. Confirme que o CPF foi localizado, mas que a autenticação ainda depende do
    nascimento, e envie `20/05/1990`.
-5. Envie `qual é meu limite?`.
+5. Confirme que o atendimento **retoma o pedido do passo 2 sozinho**, respondendo
+   o limite sem perguntar de novo o que você quer. Repetir a pergunta aqui é
+   falha.
 
 Resultado esperado: saudação como primeira resposta, já pedindo o CPF;
-confirmação apenas de que
-o CPF foi localizado; pedido de nascimento em `DD/MM/AAAA`; autenticação somente
-após combinar os dados; resposta `Seu limite atual é R$ 2.500,00...`. CPF e
-nascimento ficam mascarados.
+confirmação apenas de que o CPF foi localizado; pedido de nascimento em
+`DD/MM/AAAA`; autenticação somente após combinar os dados; e o pedido original
+retomado sem nova pergunta, com a resposta `Seu limite atual é R$ 2.500,00...`.
+CPF e nascimento ficam mascarados.
 
 Os CPFs `99999999999`, `88888888888` e `77777777777` falham imediatamente, sem
 pedido de nascimento. A terceira falha encerra o atendimento cordialmente.

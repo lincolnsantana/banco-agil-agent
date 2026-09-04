@@ -64,7 +64,9 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
 
 ## Funcionalidades implementadas
 
-- Autenticação com 3 tentativas e encerramento cordial.
+- Autenticação com 3 tentativas e encerramento cordial. O pedido feito antes de
+  autenticar fica guardado e é retomado assim que a autenticação conclui, sem
+  pedir de novo o que o cliente acabou de dizer.
 - Consulta de limite e solicitação de aumento com decisão por score; aprovação atualiza `clientes.csv`.
 - Entrevista de crédito direta (pedido de score) ou após rejeição, com consentimento e reanálise quando houver limite pendente.
 - Cotação de moedas por nome (`dólar`, `euro`, `iene` etc.) ou par (`EUR-USD`),
@@ -121,8 +123,9 @@ histórico ou tools. Na triagem, autenticação, encerramento e rotas claras usa
 zero chamada; só texto pós-autenticação ambíguo usa uma chamada de
 classificação, com fallback determinístico. Crédito, Entrevista e Câmbio usam
 uma chamada por turno para redigir o texto canônico com fatos mascarados (até
-duas no turno com rota ambígua). CPF, data, números, sim/não, cálculos,
-encerramento e autenticação continuam determinísticos. Temperatura `0.3`, saída
+duas no turno com rota ambígua), recebendo junto a pergunta do cliente com PII
+mascarada para responderem no tom de quem perguntou. CPF, data, números,
+sim/não, cálculos, encerramento e autenticação continuam determinísticos. Temperatura `0.3`, saída
 de 500 tokens e timeout de 30 s; saída inválida ou falha preserva integralmente
 a resposta canônica.
 
@@ -153,9 +156,13 @@ nenhuma chamada ao provedor é realizada. Com Groq ativo, cada especialista cria
 primeiro uma resposta canônica a partir das regras e tools em Python. O modelo
 gera a apresentação inicial e redige as respostas de Crédito, Entrevista e
 Câmbio a partir do canônico com fatos mascarados, sem alterar fatos, valores ou
-decisões. A triagem usa parser determinístico primeiro e só classifica via Groq
-quando a intenção continua ambígua; cada turno especialista faz no máximo uma
-chamada de redação.
+decisões. Junto do canônico ele recebe a pergunta do cliente — sem CPF,
+nascimento, números ou caracteres de estrutura — para reconhecer o pedido e
+responder com as palavras de quem perguntou; a pergunta orienta o tom, nunca o
+conteúdo, e a saída só é aceita se preservar marcadores, números, decisão e
+pergunta do canônico. A triagem usa parser determinístico primeiro e só
+classifica via Groq quando a intenção continua ambígua; cada turno especialista
+faz no máximo uma chamada de redação.
 
 Roteiro na UI: na tela inicial, clique em **Visualizar limite** (ou digite o
 pedido no campo central) → informe o CPF → informe o nascimento →

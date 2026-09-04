@@ -47,6 +47,7 @@ def handle_triage(
         return end_reply
 
     if not state.authenticated:
+        _remember_requested_intent(state, user_text)
         return _handle_authentication(state, user_text, service)
 
     if state.pending_flow is not None:
@@ -79,12 +80,7 @@ def handle_triage(
         return "Posso ajudar com limite de crédito ou cotação de moedas. O que deseja?"
 
     state.intent = intent
-    if intent is Intent.EXCHANGE_RATE:
-        state.active_agent = Agent.EXCHANGE
-    elif intent is Intent.CREDIT_INTERVIEW:
-        state.active_agent = Agent.CREDIT_INTERVIEW
-    else:
-        state.active_agent = Agent.CREDIT
+    state.active_agent = agent_for_intent(intent)
     return "Certo. Vou prosseguir com sua solicitação."
 
 
@@ -123,12 +119,7 @@ def _handle_flow_answer(state: ConversationState, user_text: str) -> str:
     if answer is True and target is not None:
         state.pending_flow = None
         state.intent = target
-        if target is Intent.EXCHANGE_RATE:
-            state.active_agent = Agent.EXCHANGE
-        elif target is Intent.CREDIT_INTERVIEW:
-            state.active_agent = Agent.CREDIT_INTERVIEW
-        else:
-            state.active_agent = Agent.CREDIT
+        state.active_agent = agent_for_intent(target)
         return "Certo. Vou prosseguir com sua solicitação."
     if answer is False:
         state.pending_flow = None
@@ -189,7 +180,7 @@ def _handle_authentication(
     except RepositoryError:
         return "Não foi possível validar os dados agora. Tente novamente mais tarde."
     if result.authenticated:
-        return "Dados confirmados. Como posso ajudar hoje?"
+        return _resume_requested_intent(state)
 
     state.pending_cpf = None
     state.pending_birth_date = None
@@ -203,6 +194,54 @@ def _handle_authentication(
         "Não foi possível validar os dados informados. Vamos tentar novamente: "
         "informe seu CPF com 11 dígitos."
     )
+
+
+# Pedidos que fazem sentido retomar sozinhos assim que a autenticacao conclui.
+_RESUMABLE_INTENTS = frozenset(
+    {
+        Intent.CREDIT_LIMIT,
+        Intent.LIMIT_INCREASE,
+        Intent.CREDIT_INTERVIEW,
+        Intent.EXCHANGE_RATE,
+    }
+)
+
+
+def agent_for_intent(intent: Intent) -> Agent:
+    """Traduz a intencao de atendimento no especialista responsavel."""
+    if intent is Intent.EXCHANGE_RATE:
+        return Agent.EXCHANGE
+    if intent is Intent.CREDIT_INTERVIEW:
+        return Agent.CREDIT_INTERVIEW
+    return Agent.CREDIT
+
+
+def _remember_requested_intent(state: ConversationState, user_text: str) -> None:
+    """Guarda o pedido feito antes da autenticacao, preservando o primeiro.
+
+    CPF e nascimento nao carregam intencao, entao as respostas de autenticacao
+    passam por aqui sem sobrescrever o que o cliente pediu na abertura.
+    """
+    if state.deferred_intent is not None:
+        return
+    intent = _deterministic_intent(user_text)
+    if intent in _RESUMABLE_INTENTS:
+        state.deferred_intent = intent
+
+
+def _resume_requested_intent(state: ConversationState) -> str:
+    """Retoma o pedido anterior a autenticacao em vez de perguntar de novo.
+
+    A resposta daqui e substituida pela do especialista quando ha pedido a
+    retomar: o grafo segue para ele no mesmo turno.
+    """
+    deferred = state.deferred_intent
+    if deferred is None:
+        return "Dados confirmados. Como posso ajudar hoje?"
+    state.deferred_intent = None
+    state.intent = deferred
+    state.active_agent = agent_for_intent(deferred)
+    return "Dados confirmados. Vou retomar seu pedido."
 
 
 def _deterministic_intent(user_text: str) -> Intent | None:

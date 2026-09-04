@@ -48,6 +48,8 @@ class ConversationState(BaseModel):
     authenticated_client: Client | None = Field(default=None, repr=False)
     requested_limit: PositiveMoney | None = Field(default=None, repr=False)
     pending_flow: Intent | None = None
+    # Pedido feito antes da autenticacao, retomado assim que ela conclui.
+    deferred_intent: Intent | None = None
     credit_reanalysis_pending: bool = False
     interview_draft: CreditInterviewDraft = Field(
         default_factory=CreditInterviewDraft,
@@ -75,6 +77,9 @@ class ConversationState(BaseModel):
             "active_agent": self.active_agent.value,
             "intent": self.intent.value,
             "pending_flow": self.pending_flow.value if self.pending_flow else None,
+            "deferred_intent": (
+                self.deferred_intent.value if self.deferred_intent else None
+            ),
             "authenticated": self.authenticated,
             "ended": self.ended,
             "end_reason": self.end_reason.value if self.end_reason else None,
