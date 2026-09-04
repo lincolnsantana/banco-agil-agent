@@ -126,9 +126,14 @@ def authentication_reply_if_missing(state: ConversationState) -> str | None:
 _SHORT_ANSWER_PUNCTUATION = ".,!?;:'\"()[]-"
 
 
+def normalize_short_answer(value: str) -> str:
+    """Remove acentos, caixa e pontuação lateral de respostas curtas."""
+    return normalized_text(value).strip(_SHORT_ANSWER_PUNCTUATION).strip()
+
+
 def parse_confirmation(value: str) -> bool | None:
     """Converte respostas curtas de consentimento sem usar LLM."""
-    normalized = normalized_text(value).strip(_SHORT_ANSWER_PUNCTUATION).strip()
+    normalized = normalize_short_answer(value)
     if normalized in {"sim", "aceito", "concordo", "pode", "quero"}:
         return True
     if normalized in {"nao", "recuso", "prefiro nao"}:

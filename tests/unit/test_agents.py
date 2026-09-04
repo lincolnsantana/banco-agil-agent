@@ -619,6 +619,69 @@ def test_interview_consent_tolerates_punctuation(
     assert service.answers == []
 
 
+@pytest.mark.parametrize(
+    "request_text",
+    [
+        "quero realizar a entrevista de aumento de crédito.",
+        "quero fazer a entrevista de crédito",
+        "pode iniciar a entrevista?",
+    ],
+)
+def test_explicit_interview_request_starts_without_asking(
+    client: Client, request_text: str
+) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT_INTERVIEW,
+    )
+    service = FakeInterviewService(
+        InterviewProgress(next_field=InterviewField.MONTHLY_INCOME)
+    )
+
+    reply = handle_credit_interview(state, request_text, service)
+
+    assert "renda mensal" in reply.casefold()
+    assert "deseja realizar" not in reply.casefold()
+    assert service.starts == [True]
+
+
+def test_explicit_interview_refusal_declines_without_starting(
+    client: Client,
+) -> None:
+    class DecliningInterviewService(FakeInterviewService):
+        def start(self, state: ConversationState, consent: bool) -> InterviewProgress:
+            self.starts.append(consent)
+            return InterviewProgress(next_field=None, consent_declined=True)
+
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT_INTERVIEW,
+    )
+    service = DecliningInterviewService(
+        InterviewProgress(next_field=InterviewField.MONTHLY_INCOME)
+    )
+
+    reply = handle_credit_interview(state, "não quero fazer a entrevista", service)
+
+    assert service.starts == [False]
+    assert "tudo bem" in reply.casefold()
+
+
+def test_generic_interview_mention_still_asks_for_consent(client: Client) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT_INTERVIEW,
+    )
+    service = FakeInterviewService(
+        InterviewProgress(next_field=InterviewField.MONTHLY_INCOME)
+    )
+
+    reply = handle_credit_interview(state, "preciso pensar", service)
+
+    assert "deseja realizar" in reply.casefold()
+    assert service.starts == []
+
+
 @pytest.mark.parametrize("consent_text", ["não.", "Não!"])
 def test_interview_declined_consent_tolerates_punctuation(
     client: Client, consent_text: str

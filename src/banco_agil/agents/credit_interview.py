@@ -3,6 +3,7 @@
 from banco_agil.agents._shared import (
     authentication_reply_if_missing,
     end_reply_if_requested,
+    normalize_short_answer,
     parse_confirmation,
 )
 from banco_agil.agents.state import ConversationState
@@ -42,7 +43,9 @@ def handle_credit_interview(
         return authentication_reply
 
     if not state.interview_draft.consent_given:
-        consent = parse_confirmation(user_text)
+        consent = _explicit_interview_consent(user_text)
+        if consent is None:
+            consent = parse_confirmation(user_text)
         if consent is None:
             return "Deseja realizar a entrevista de crédito? Responda sim ou não."
         try:
@@ -119,6 +122,34 @@ def _current_field(state: ConversationState) -> InterviewField:
     if draft.dependents is None:
         return InterviewField.DEPENDENTS
     return InterviewField.ACTIVE_DEBTS
+
+
+_INTERVIEW_DECLINE_MARKERS = frozenset({"nao", "nunca", "jamais", "recuso", "dispenso"})
+_INTERVIEW_ACTION_MARKERS = frozenset(
+    {"fazer", "realizar", "comecar", "iniciar", "participar", "aceito", "concordo"}
+)
+_INTERVIEW_INFORMATIONAL_MARKERS = frozenset(
+    {"saber", "entender", "conhecer", "informacao", "duvida", "explicar", "funciona"}
+)
+
+
+def _explicit_interview_consent(user_text: str) -> bool | None:
+    """Trata pedido explícito de entrevista como consentimento ou recusa.
+
+    O texto precisa mencionar a entrevista; negação explícita nunca vira
+    consentimento e pergunta genérica continua pedindo `sim ou não`.
+    """
+    normalized = normalize_short_answer(user_text)
+    if "entrevista" not in normalized:
+        return None
+    words = set(normalized.split())
+    if words & _INTERVIEW_DECLINE_MARKERS:
+        return False
+    if words & _INTERVIEW_ACTION_MARKERS:
+        return True
+    if "quero" in words and not (words & _INTERVIEW_INFORMATIONAL_MARKERS):
+        return True
+    return None
 
 
 def _question(field: InterviewField | None) -> str:

@@ -340,6 +340,21 @@ def test_interview_completion_reanalyzes_credit_in_same_turn(client: Client) -> 
     assert not state.credit_reanalysis_pending
 
 
+def test_explicit_interview_request_starts_without_consent_question(
+    client: Client,
+) -> None:
+    harness = build_harness(client)
+    state = ConversationState(authenticated_client=client)
+
+    turn = harness.service.handle_turn(
+        state, (), "quero realizar a entrevista de aumento de crédito."
+    )
+
+    assert state.active_agent is Agent.CREDIT_INTERVIEW
+    assert "renda mensal" in turn.reply.casefold()
+    assert "deseja realizar" not in turn.reply.casefold()
+
+
 def test_direct_interview_completion_reports_score_direction(client: Client) -> None:
     harness = build_harness(client)
     state = ConversationState(
