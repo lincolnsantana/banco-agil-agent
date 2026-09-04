@@ -230,12 +230,15 @@ def test_chat_bubbles_identify_roles_and_escape_content() -> None:
     assistant_bubble = chat_bubble_html("assistant", "Linha 1\nLinha 2")
 
     assert "chat-bubble--user" in user_bubble
-    assert "Você" in user_bubble
+    assert "chat-row--user" in user_bubble
+    assert "🧑" in user_bubble
     assert "<script>" not in user_bubble
     assert "&lt;script&gt;" in user_bubble
     assert "chat-bubble--assistant" in assistant_bubble
-    assert "Banco Ágil" in assistant_bubble
+    assert "chat-row--assistant" in assistant_bubble
+    assert "🏦" in assistant_bubble
     assert "Linha 1<br>Linha 2" in assistant_bubble
+    assert "chat-bubble__sender" not in user_bubble + assistant_bubble
 
 
 def test_build_service_without_key_supports_deterministic_turns(

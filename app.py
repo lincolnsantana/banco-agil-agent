@@ -45,6 +45,10 @@ _UI_STYLES = """
     --agil-border: color-mix(in srgb, var(--text-color) 18%, transparent);
     --agil-muted: color-mix(in srgb, var(--text-color) 68%, transparent);
     --agil-shadow: color-mix(in srgb, var(--text-color) 10%, transparent);
+    --agil-assistant-bubble: #374151;
+    --agil-assistant-border: #64748b;
+    --agil-user-bubble: #0b5cad;
+    --agil-user-border: #60a5fa;
 }
 
 html,
@@ -88,63 +92,85 @@ body,
     font-weight: 500;
 }
 
-[data-testid="stChatMessage"] {
-    width: 100%;
-    max-width: 100%;
-    margin: 0.6rem 0;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    box-shadow: none;
-    align-items: flex-start;
-}
-
-[data-testid="stChatMessage"] [data-testid="stChatMessageContent"] {
+.chat-row {
     display: flex;
     width: 100%;
+    align-items: flex-start;
+    gap: 0.65rem;
+    margin: 0.75rem 0;
 }
 
-[data-testid="stChatMessage"]:has(.chat-bubble--user) {
+.chat-row--user {
     flex-direction: row-reverse;
 }
 
-[data-testid="stChatMessage"]:has(.chat-bubble--user)
-[data-testid="stChatMessageContent"] {
-    justify-content: flex-end;
+.chat-avatar {
+    display: grid;
+    flex: 0 0 38px;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    border: 1px solid var(--agil-border);
+    border-radius: 50%;
+    background: var(--agil-surface-muted);
+    font-size: 1.15rem;
+    line-height: 1;
+    box-shadow: 0 2px 8px var(--agil-shadow);
+}
+
+.chat-row--user .chat-avatar {
+    border-color: color-mix(in srgb, var(--agil-accent) 48%, var(--agil-border));
+    background: color-mix(in srgb, var(--agil-accent) 14%, var(--agil-surface));
 }
 
 .chat-bubble {
+    position: relative;
     width: fit-content;
-    max-width: min(78%, 680px);
-    padding: 0.8rem 1rem;
-    border: 1px solid var(--agil-border);
-    border-radius: 18px;
-    color: var(--agil-text);
+    max-width: min(76%, 650px);
+    padding: 0.85rem 1.05rem;
+    border: 2px solid var(--agil-border);
+    border-radius: 17px;
+    color: #ffffff;
+    font-size: 0.94rem;
     line-height: 1.55;
     overflow-wrap: anywhere;
-    box-shadow: 0 3px 14px var(--agil-shadow);
+    box-shadow: 0 5px 18px var(--agil-shadow);
+}
+
+.chat-bubble::before {
+    content: "";
+    position: absolute;
+    top: 12px;
+    width: 10px;
+    height: 10px;
+    background: inherit;
+    transform: rotate(45deg);
 }
 
 .chat-bubble--assistant {
     margin-right: auto;
-    border-bottom-left-radius: 5px;
-    background: var(--agil-surface-muted);
+    border-color: var(--agil-assistant-border);
+    border-top-left-radius: 5px;
+    background: var(--agil-assistant-bubble);
+}
+
+.chat-bubble--assistant::before {
+    left: -7px;
+    border-bottom: 2px solid var(--agil-assistant-border);
+    border-left: 2px solid var(--agil-assistant-border);
 }
 
 .chat-bubble--user {
     margin-left: auto;
-    border-color: color-mix(in srgb, var(--agil-accent) 48%, var(--agil-border));
-    border-bottom-right-radius: 5px;
-    background: color-mix(in srgb, var(--agil-accent) 14%, var(--agil-surface));
+    border-color: var(--agil-user-border);
+    border-top-right-radius: 5px;
+    background: var(--agil-user-bubble);
 }
 
-.chat-bubble__sender {
-    display: block;
-    margin-bottom: 0.25rem;
-    color: var(--agil-muted);
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.02em;
+.chat-bubble--user::before {
+    right: -7px;
+    border-top: 2px solid var(--agil-user-border);
+    border-right: 2px solid var(--agil-user-border);
 }
 
 [data-testid="stChatInput"] {
@@ -159,6 +185,19 @@ body,
     font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
+[data-testid="stChatInput"]:focus-within,
+[data-testid="stChatInput"] [data-baseweb="textarea"]:focus-within {
+    border-color: var(--agil-user-bubble) !important;
+    box-shadow: 0 0 0 1px var(--agil-user-bubble),
+        0 8px 24px var(--agil-shadow) !important;
+}
+
+[data-testid="stChatInput"] textarea:focus {
+    outline: none !important;
+    box-shadow: none !important;
+    caret-color: var(--agil-user-bubble);
+}
+
 @media (max-width: 640px) {
     [data-testid="stMainBlockContainer"] {
         padding: 0.75rem 0.8rem 6.5rem;
@@ -169,7 +208,13 @@ body,
     }
 
     .chat-bubble {
-        max-width: 88%;
+        max-width: calc(100% - 52px);
+    }
+
+    .chat-avatar {
+        flex-basis: 34px;
+        width: 34px;
+        height: 34px;
     }
 }
 </style>
@@ -254,20 +299,21 @@ def chat_avatar(role: str) -> str:
 
 
 def chat_bubble_html(role: str, text: str) -> str:
-    """Monta um balão escapado para impedir HTML vindo da conversa."""
+    """Monta linha e balão escapados para impedir HTML vindo da conversa."""
     bubble_role = "user" if role == "user" else "assistant"
-    sender = "Você" if bubble_role == "user" else "Banco Ágil"
+    avatar = escape(chat_avatar(bubble_role))
     safe_text = escape(text).replace("\n", "<br>")
     return (
+        f'<div class="chat-row chat-row--{bubble_role}">'
+        f'<span class="chat-avatar" aria-hidden="true">{avatar}</span>'
         f'<div class="chat-bubble chat-bubble--{bubble_role}">'
-        f'<span class="chat-bubble__sender">{sender}</span>{safe_text}</div>'
+        f"{safe_text}</div></div>"
     )
 
 
 def render_chat_message(role: str, text: str) -> None:
     """Renderiza uma mensagem no balão e avatar correspondentes."""
-    with st.chat_message(role, avatar=chat_avatar(role)):
-        st.markdown(chat_bubble_html(role, text), unsafe_allow_html=True)
+    st.markdown(chat_bubble_html(role, text), unsafe_allow_html=True)
 
 
 def build_conversation_service(settings: Settings) -> ConversationService:
