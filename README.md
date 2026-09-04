@@ -66,7 +66,7 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
 - UI Streamlit com sessão persistente, Reiniciar (limpa a conversa sem apagar
   persistência) e mascaramento de dados sensíveis.
 - Auditoria técnica consultável por sessão + métricas que distinguem turnos com
-  0 e 1 chamada LLM.
+  0 a 2 chamadas LLM.
 - 219 testes (unitários, integração e E2E) + `docs/TEST_PLAN.md` de homologação.
 
 ## Desafios enfrentados e soluções
@@ -97,14 +97,18 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
 | Concorrência | filelock + `os.replace` | Escrita atômica em arquivos mutáveis |
 | Qualidade | Ruff + Mypy estrito + Pytest + RESPX | Contrato de cada tarefa do projeto |
 
-**Economia de tokens**: rota determinística, parsers e templates antes do LLM;
-máximo 1 chamada/turno; system message único (global + especialista);
-somente tools do especialista ativo; estado sem PII (≤ 500 caracteres);
-temperatura `0.1`, saída de 180 tokens, timeout de 20 s; métricas por chamada.
+**Uso do LLM**: o Groq classifica a intenção em linguagem livre antes do parser
+determinístico (com fallback sem credencial ou em falha); CPF, data, números,
+sim/não, encerramento e autenticação continuam determinísticos. Orçamento de no
+máximo 2 chamadas/turno (classificação + redação final); system message único
+(global + especialista); somente tools do especialista ativo; estado sem PII
+(≤ 500 caracteres); temperatura `0.3`, saída de 500 tokens, timeout de 30 s;
+métricas por chamada. A redação final usa fatos mascarados e só é aceita com
+números subconjunto do canônico, sem inverter decisões.
 
 **Limitações**: sem RAG/banco vetorial (fora do escopo); sem checkpoint de
-sessão persistente (T019, opcional); câmbio exige rede; LLM é exceção para
-intenção ambígua, nunca decide regra de negócio.
+sessão persistente (T019, opcional); câmbio exige rede; LLM nunca decide regra
+de negócio nem inventa autenticação, limite, score ou cotação.
 
 ## Tutorial de execução e testes
 
@@ -127,10 +131,9 @@ A interface informa no topo se o Groq está ativo e qual modelo foi carregado.
 Sem `BANCO_AGIL_GROQ_API_KEY`, ela sinaliza **Modo determinístico**: nesse modo,
 nenhuma chamada ao provedor é realizada. Com Groq ativo, cada especialista cria
 primeiro uma resposta canônica a partir das regras e tools em Python. O modelo
-recebe contexto sanitizado e pode acrescentar uma abertura curta e natural sem
-alterar fatos, valores ou decisões. Em linguagem ambígua, a única chamada do
-turno é reservada à classificação da intenção e a resposta permanece canônica.
-O limite continua sendo uma chamada por turno.
+tenta classificar a intenção antes do parser determinístico e pode redigir a
+resposta final completa a partir do canônico com fatos mascarados, sem alterar
+fatos, valores ou decisões. O limite é de duas chamadas por turno.
 
 Roteiro na UI: informe o CPF → informe o nascimento → `qual é meu limite?`
 (`R$ 2.500,00`) → `quero aumentar meu limite` → `4000` → `Encerrar atendimento`

@@ -18,9 +18,9 @@ class Settings(BaseSettings):
 
     groq_api_key: SecretStr | None = None
     groq_model: str = "llama-3.3-70b-versatile"
-    llm_temperature: float = Field(default=0.1, ge=0, le=1)
-    llm_max_tokens: int = Field(default=180, ge=1)
-    llm_timeout_seconds: float = Field(default=20.0, gt=0)
+    llm_temperature: float = Field(default=0.3, ge=0, le=1)
+    llm_max_tokens: int = Field(default=500, ge=1)
+    llm_timeout_seconds: float = Field(default=30.0, gt=0)
     awesomeapi_base_url: str = "https://economia.awesomeapi.com.br"
     data_dir: Path = Path("data")
     var_dir: Path = Path("var")

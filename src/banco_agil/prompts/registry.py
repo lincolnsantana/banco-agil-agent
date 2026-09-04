@@ -24,7 +24,8 @@ from banco_agil.tools.banking import (
 )
 
 _VARIABLE_PATTERN = re.compile(r"{{\s*([a-z_]+)\s*}}")
-_PROMPT_VERSION = "1.2.0"
+_GLOBAL_PROMPT_VERSION = "1.3.0"
+_SPECIALIST_PROMPT_VERSION = "1.2.0"
 
 
 @dataclass(frozen=True)
@@ -86,7 +87,7 @@ class PromptRegistry:
 PROMPT_REGISTRY = PromptRegistry(
     global_prompt=PromptDefinition(
         prompt_id="global",
-        version=_PROMPT_VERSION,
+        version=_GLOBAL_PROMPT_VERSION,
         template=GLOBAL_PROMPT,
         variables=frozenset(),
         character_limit=1_200,
@@ -94,28 +95,28 @@ PROMPT_REGISTRY = PromptRegistry(
     specialist_prompts={
         Agent.TRIAGE: PromptDefinition(
             prompt_id="triage",
-            version=_PROMPT_VERSION,
+            version=_SPECIALIST_PROMPT_VERSION,
             template=TRIAGE_PROMPT,
             variables=frozenset({"state"}),
             character_limit=1_000,
         ),
         Agent.CREDIT: PromptDefinition(
             prompt_id="credit",
-            version=_PROMPT_VERSION,
+            version=_SPECIALIST_PROMPT_VERSION,
             template=CREDIT_PROMPT,
             variables=frozenset({"state"}),
             character_limit=1_000,
         ),
         Agent.CREDIT_INTERVIEW: PromptDefinition(
             prompt_id="credit_interview",
-            version=_PROMPT_VERSION,
+            version=_SPECIALIST_PROMPT_VERSION,
             template=CREDIT_INTERVIEW_PROMPT,
             variables=frozenset({"state"}),
             character_limit=1_000,
         ),
         Agent.EXCHANGE: PromptDefinition(
             prompt_id="exchange",
-            version=_PROMPT_VERSION,
+            version=_SPECIALIST_PROMPT_VERSION,
             template=EXCHANGE_PROMPT,
             variables=frozenset({"state"}),
             character_limit=1_000,

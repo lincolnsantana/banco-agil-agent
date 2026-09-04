@@ -1,4 +1,4 @@
-"""Adaptador estruturado do Groq com orcamento por turno."""
+"""Adaptador estruturado do Groq com orcamento de duas chamadas por turno."""
 
 from collections.abc import Mapping, Sequence
 from time import perf_counter
@@ -18,11 +18,13 @@ from banco_agil.observability.metrics import (
     NullLlmMetricsRecorder,
 )
 
+MAX_CALLS_PER_TURN = 2
+
 OutputModel = TypeVar("OutputModel", bound=BaseModel)
 
 
 class LlmCallLimitError(IntegrationError):
-    """Indica que o turno ja consumiu sua unica chamada permitida."""
+    """Indica que o turno ja consumiu suas duas chamadas permitidas."""
 
 
 class StructuredLlm(Protocol):
@@ -36,27 +38,28 @@ class StructuredLlm(Protocol):
         *,
         prompt_version: str | None = None,
     ) -> OutputModel:
-        """Executa no maximo uma chamada por turno e valida a resposta."""
+        """Executa no maximo duas chamadas por turno e valida a resposta."""
         ...
 
-    def was_called(self, turn_id: str) -> bool:
-        """Informa se o orçamento do turno já foi consumido."""
+    def calls_remaining(self, turn_id: str) -> int:
+        """Informa quantas chamadas restam no orçamento do turno."""
         ...
 
 
 class _TurnCallBudget:
     def __init__(self) -> None:
-        self._consumed_turns: set[str] = set()
+        self._used_calls: dict[str, int] = {}
 
     def reserve(self, turn_id: str) -> None:
         if not turn_id:
             raise ValueError("turn ID cannot be empty")
-        if turn_id in self._consumed_turns:
+        if self._used_calls.get(turn_id, 0) >= MAX_CALLS_PER_TURN:
             raise LlmCallLimitError("LLM call budget already consumed for this turn")
-        self._consumed_turns.add(turn_id)
+        self._used_calls[turn_id] = self._used_calls.get(turn_id, 0) + 1
 
-    def was_consumed(self, turn_id: str) -> bool:
-        return turn_id in self._consumed_turns
+    def calls_remaining(self, turn_id: str) -> int:
+        """Retorna o saldo de chamadas do turno, sem consumir orçamento."""
+        return max(0, MAX_CALLS_PER_TURN - self._used_calls.get(turn_id, 0))
 
 
 class FakeStructuredLlm:
@@ -67,9 +70,9 @@ class FakeStructuredLlm:
         self._response = response
         self._budget = _TurnCallBudget()
 
-    def was_called(self, turn_id: str) -> bool:
-        """Informa se este fake já consumiu o turno."""
-        return self._budget.was_consumed(turn_id)
+    def calls_remaining(self, turn_id: str) -> int:
+        """Informa o saldo de chamadas deste fake no turno."""
+        return self._budget.calls_remaining(turn_id)
 
     def invoke_structured(
         self,
@@ -112,9 +115,9 @@ class GroqStructuredLlm:
         self._metrics_recorder = metrics_recorder or NullLlmMetricsRecorder()
         self._budget = _TurnCallBudget()
 
-    def was_called(self, turn_id: str) -> bool:
-        """Informa se o adaptador já consumiu o turno."""
-        return self._budget.was_consumed(turn_id)
+    def calls_remaining(self, turn_id: str) -> int:
+        """Informa o saldo de chamadas do adaptador no turno."""
+        return self._budget.calls_remaining(turn_id)
 
     def invoke_structured(
         self,
@@ -127,7 +130,7 @@ class GroqStructuredLlm:
         """Invoca o provedor uma vez e valida a saida estruturada.
 
         Raises:
-            LlmCallLimitError: Se o turno ja realizou uma chamada.
+            LlmCallLimitError: Se o turno ja realizou duas chamadas.
             IntegrationError: Se o provedor ou a validacao falhar.
         """
         self._budget.reserve(turn_id)

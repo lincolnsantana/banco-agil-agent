@@ -1,4 +1,4 @@
-"""No de triagem com autenticacao e roteamento deterministico primeiro."""
+"""No de triagem com LLM primeiro e fallback deterministico."""
 
 import re
 from collections.abc import Sequence
@@ -46,28 +46,9 @@ def handle_triage(
     if not state.authenticated:
         return _handle_authentication(state, user_text, service)
 
-    intent = _deterministic_intent(user_text)
-    if intent is None and llm is not None and turn_id:
-        rendered = render_prompt(state)
-        safe_user_text = sanitize_user_text(user_text)
-        if not safe_user_text:
-            return (
-                "Posso ajudar com limite de crédito ou cotação de moedas. O que deseja?"
-            )
-        try:
-            decision = llm.invoke_structured(
-                turn_id,
-                [
-                    rendered.system_message,
-                    *_sanitized_history(recent_messages),
-                    HumanMessage(content=safe_user_text),
-                ],
-                IntentDecision,
-                prompt_version=rendered.prompt_version,
-            )
-            intent = decision.intent
-        except IntegrationError:
-            intent = None
+    intent = _llm_intent(state, user_text, llm, turn_id, recent_messages)
+    if intent is None:
+        intent = _deterministic_intent(user_text)
 
     if intent is None or intent in {Intent.UNKNOWN, Intent.OTHER}:
         return "Posso ajudar com limite de crédito ou cotação de moedas. O que deseja?"
@@ -127,6 +108,36 @@ def _handle_authentication(
             "Atendimento encerrado."
         )
     return "Não foi possível validar os dados. Tente novamente informando seu CPF."
+
+
+def _llm_intent(
+    state: ConversationState,
+    user_text: str,
+    llm: StructuredLlm | None,
+    turn_id: str,
+    recent_messages: Sequence[BaseMessage],
+) -> Intent | None:
+    """Classifica a intenção pelo LLM antes do parser determinístico."""
+    if llm is None or not turn_id:
+        return None
+    rendered = render_prompt(state)
+    safe_user_text = sanitize_user_text(user_text)
+    if not safe_user_text:
+        return None
+    try:
+        decision = llm.invoke_structured(
+            turn_id,
+            [
+                rendered.system_message,
+                *_sanitized_history(recent_messages),
+                HumanMessage(content=safe_user_text),
+            ],
+            IntentDecision,
+            prompt_version=rendered.prompt_version,
+        )
+    except IntegrationError:
+        return None
+    return decision.intent
 
 
 def _deterministic_intent(user_text: str) -> Intent | None:

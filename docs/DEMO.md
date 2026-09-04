@@ -8,7 +8,8 @@ Dados fictícios: CPF `11144477735`, nascimento `1990-05-20`. Sem chave de LLM.
   Câmbio) sob uma única conversa.
 - Mostre o fluxo em uma frase: `UI -> ConversationService -> Graph -> Tools ->
   Services -> CSV/SQLite/HTTP`.
-- Destaque: determinístico primeiro, no máximo 1 chamada LLM por turno, tools
+- Destaque: LLM primeiro na linguagem (com fallback determinístico), no máximo
+  2 chamadas por turno, tools
   com estado injetado e CPF sempre vindo do estado confiável.
 
 ## 0:45–2:00 — Triagem + Crédito (consulta e aumento)

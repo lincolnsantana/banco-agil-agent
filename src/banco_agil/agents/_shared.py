@@ -61,20 +61,25 @@ _SAFE_LLM_WORDS = frozenset(
 )
 
 
-_UNSAFE_OPENING_WORDS = (
-    "aprovad",
-    "autenticad",
-    "cotacao",
-    "limite",
-    "rejeitad",
-    "score",
+_FACT_PATTERN = re.compile(
+    r"\b[A-Z]{3}-[A-Z]{3}\b|\b\d{4}-\d{2}-\d{2}\b|(?:R\$\s*)?(?:\d[\d.,]*\d|\d)"
 )
+_FACT_TOKEN_PATTERN = re.compile(r"\[DADO_\d+\]")
+_LEAK_PHRASES = (
+    "system prompt",
+    "prompt do sistema",
+    "instrucao de sistema",
+    "como modelo de linguagem",
+    "minhas instrucoes",
+    "regras internas",
+)
+_MAX_REWRITE_LENGTH = 600
 
 
-class HumanizedReply(BaseModel):
-    """Abertura contextual sem fatos ou decisões bancárias."""
+class RewrittenReply(BaseModel):
+    """Reescrita integral da resposta canônica, com fatos mascarados."""
 
-    opening: str = Field(min_length=1, max_length=100)
+    reply: str = Field(min_length=1, max_length=_MAX_REWRITE_LENGTH)
 
 
 def normalized_text(value: str) -> str:
@@ -136,20 +141,22 @@ def humanize_reply(
     recent_messages: Sequence[BaseMessage],
     user_text: str,
 ) -> str:
-    """Acrescenta uma abertura do LLM sem permitir mudança nos fatos.
+    """Reescreve a resposta canônica sem permitir mudança nos fatos.
 
-    A resposta canônica permanece integral. Falhas, saídas inseguras e orçamento
-    já consumido retornam silenciosamente ao texto determinístico.
+    O LLM recebe o canônico com fatos mascarados e pode redigir a resposta
+    final completa. Falhas, saídas inseguras e orçamento consumido retornam
+    silenciosamente ao texto determinístico.
     """
     if (
         llm is None
         or not turn_id
         or state.ended
         or responding_agent is None
-        or llm.was_called(turn_id)
+        or llm.calls_remaining(turn_id) == 0
     ):
         return canonical_reply
 
+    masked_reply, facts = _mask_facts(canonical_reply)
     prompt_state = state.model_copy(deep=True)
     prompt_state.active_agent = responding_agent
     rendered = render_prompt(prompt_state)
@@ -159,10 +166,11 @@ def humanize_reply(
         *_safe_history(recent_messages),
         HumanMessage(
             content=(
-                "Gere somente uma abertura acolhedora e contextual para a resposta "
-                "já validada pelo sistema. Não inclua fatos, números, decisões, "
-                "promessas ou perguntas. Contexto seguro: "
-                f"{safe_user_text}."
+                "Redija a resposta final completa a partir do texto validado "
+                "abaixo. Preserve cada marcador [DADO_N] exatamente como está, "
+                "sem criar fatos, números, decisões ou perguntas novos. "
+                f"Texto validado: {masked_reply} "
+                f"Contexto seguro: {safe_user_text}."
             )
         ),
     ]
@@ -170,24 +178,58 @@ def humanize_reply(
         result = llm.invoke_structured(
             turn_id,
             messages,
-            HumanizedReply,
+            RewrittenReply,
             prompt_version=rendered.prompt_version,
         )
     except IntegrationError:
         return canonical_reply
 
-    opening = " ".join(result.opening.split())
-    normalized_opening = normalized_text(opening)
-    if (
-        not opening
-        or any(character.isdigit() for character in opening)
-        or "?" in opening
-        or any(
-            unsafe_word in normalized_opening for unsafe_word in _UNSAFE_OPENING_WORDS
-        )
-    ):
+    rewritten = " ".join(result.reply.split())
+    restored = _restore_facts(rewritten, facts)
+    if restored is None or not _preserves_decision(restored, canonical_reply):
         return canonical_reply
-    return f"{opening} {canonical_reply}"
+    return restored
+
+
+def _mask_facts(text: str) -> tuple[str, dict[str, str]]:
+    """Substitui pares, datas e números por marcadores opacos."""
+    facts: dict[str, str] = {}
+
+    def _replace(match: re.Match[str]) -> str:
+        token = f"[DADO_{len(facts) + 1}]"
+        facts[token] = match.group()
+        return token
+
+    return _FACT_PATTERN.sub(_replace, text), facts
+
+
+def _restore_facts(masked_reply: str, facts: dict[str, str]) -> str | None:
+    """Recoloca os fatos se todos os marcadores forem preservados."""
+    if set(_FACT_TOKEN_PATTERN.findall(masked_reply)) != set(facts):
+        return None
+    restored = masked_reply
+    for token, value in facts.items():
+        restored = restored.replace(token, value)
+    if _FACT_TOKEN_PATTERN.search(restored) is not None:
+        return None
+    return restored
+
+
+def _preserves_decision(rewritten: str, canonical_reply: str) -> bool:
+    """Exige subconjunto de números, perguntas e ausência de vazamento."""
+    normalized_rewritten = normalized_text(rewritten)
+    if any(leak in normalized_rewritten for leak in _LEAK_PHRASES):
+        return False
+    if rewritten.strip().endswith("?") != canonical_reply.strip().endswith("?"):
+        return False
+    canonical_digits = re.findall(r"\d+", canonical_reply)
+    rewritten_digits = re.findall(r"\d+", rewritten)
+    remaining = list(canonical_digits)
+    for digits in rewritten_digits:
+        if digits not in remaining:
+            return False
+        remaining.remove(digits)
+    return True
 
 
 def _safe_history(messages: Sequence[BaseMessage]) -> list[BaseMessage]:
