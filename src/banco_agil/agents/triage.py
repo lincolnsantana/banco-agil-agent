@@ -8,10 +8,12 @@ from pydantic import BaseModel
 
 from banco_agil.agents._shared import (
     HELP_REPLY,
+    detect_howto_topic,
     end_conversation,
     end_reply_if_requested,
     is_help_request,
     normalized_text,
+    parse_flow_answer,
     sanitize_user_text,
 )
 from banco_agil.agents.state import ConversationState
@@ -47,6 +49,13 @@ def handle_triage(
     if not state.authenticated:
         return _handle_authentication(state, user_text, service)
 
+    if state.pending_flow is not None:
+        return _handle_flow_answer(state, user_text)
+
+    topic = detect_howto_topic(user_text)
+    if topic is not None:
+        return _handle_howto(state, topic)
+
     if is_help_request(user_text):
         state.intent = Intent.UNKNOWN
         state.active_agent = Agent.TRIAGE
@@ -77,6 +86,59 @@ def handle_triage(
     else:
         state.active_agent = Agent.CREDIT
     return "Certo. Vou prosseguir com sua solicitação."
+
+
+def _handle_howto(state: ConversationState, topic: Intent) -> str:
+    """Explica o fluxo e confirma antes de iniciar aumento ou câmbio."""
+    if topic is Intent.CREDIT_LIMIT:
+        state.intent = Intent.CREDIT_LIMIT
+        state.active_agent = Agent.CREDIT
+        return "Certo. Vou prosseguir com sua solicitação."
+    if topic is Intent.CREDIT_INTERVIEW:
+        state.intent = Intent.CREDIT_INTERVIEW
+        state.active_agent = Agent.CREDIT_INTERVIEW
+        return (
+            "Na entrevista, faço 5 perguntas — renda, emprego, despesas, "
+            "dependentes e dívidas —, recalculo seu score e, se houver um "
+            "pedido rejeitado, reanaliso na hora. Deseja realizar a "
+            "entrevista de crédito? Responda sim ou não."
+        )
+    if topic is Intent.EXCHANGE_RATE:
+        explanation = (
+            "Para consultar, me diga o par de moedas (por exemplo: USD-BRL) "
+            "ou pergunte direto o valor do dólar hoje."
+        )
+    else:
+        explanation = (
+            "Para aumentar, você me informa o novo limite total desejado; eu "
+            "registro o pedido e avalio na hora pelo seu score."
+        )
+    state.pending_flow = topic
+    state.intent = Intent.UNKNOWN
+    state.active_agent = Agent.TRIAGE
+    return f"{explanation} Quer realizar agora? Responda sim ou não."
+
+
+def _handle_flow_answer(state: ConversationState, user_text: str) -> str:
+    """Confirma o fluxo pendente com resposta ampla ou repete a pergunta."""
+    target = state.pending_flow
+    answer = parse_flow_answer(user_text)
+    if answer is True and target is not None:
+        state.pending_flow = None
+        state.intent = target
+        state.active_agent = (
+            Agent.EXCHANGE if target is Intent.EXCHANGE_RATE else Agent.CREDIT
+        )
+        return "Certo. Vou prosseguir com sua solicitação."
+    if answer is False:
+        state.pending_flow = None
+        state.intent = Intent.UNKNOWN
+        state.active_agent = Agent.TRIAGE
+        return (
+            "Tudo bem. Se mudar de ideia, é só pedir. Posso ajudar com limite "
+            "de crédito ou cotação de moedas. O que deseja?"
+        )
+    return "Não entendi. Deseja realizar? Responda sim ou não."
 
 
 def _handle_authentication(

@@ -329,6 +329,25 @@ def test_ended_turn_points_to_cpf_for_new_attendance(client: Client) -> None:
     assert "CPF" in turn.reply
 
 
+def test_howto_increase_confirms_then_runs_specialist_flow(
+    client: Client,
+) -> None:
+    harness = build_harness(client)
+    state = ConversationState(authenticated_client=client)
+
+    turn = harness.service.handle_turn(state, (), "como posso aumentar o meu limite?")
+    assert "Quer realizar agora?" in turn.reply
+    assert state.pending_flow is Intent.LIMIT_INCREASE
+
+    turn = harness.service.handle_turn(state, turn.history, "sim, quero")
+    assert "limite total" in turn.reply.casefold()
+    assert state.pending_flow is None
+
+    turn = harness.service.handle_turn(state, turn.history, "4000")
+    assert "aprovado" in turn.reply.casefold()
+    assert harness.clients.client.credit_limit == Decimal("4000.00")
+
+
 def test_score_review_routes_to_interview_and_asks_consent(client: Client) -> None:
     harness = build_harness(client)
     state = ConversationState(authenticated_client=client)

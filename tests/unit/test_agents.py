@@ -439,6 +439,7 @@ def test_triage_uses_llm_only_for_ambiguous_authenticated_intent(
     "user_text",
     (
         "o que você pode fazer?",
+        "o que você pode realizar?",
         "quais serviços você oferece?",
         "como funciona o atendimento?",
         "menu",
@@ -482,6 +483,92 @@ def test_triage_classifies_ambiguous_help_with_llm(client: Client) -> None:
     assert "entrevista" in reply.casefold()
     assert state.active_agent is Agent.TRIAGE
     assert len(llm.calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("user_text", "expected_topic"),
+    (
+        ("como posso aumentar o meu limite?", Intent.LIMIT_INCREASE),
+        ("como consulto o dólar?", Intent.EXCHANGE_RATE),
+    ),
+)
+def test_howto_explains_and_asks_for_confirmation(
+    client: Client, user_text: str, expected_topic: Intent
+) -> None:
+    state = ConversationState(authenticated_client=client)
+    llm = RecordingLlm({"intent": "other"})
+
+    reply = handle_triage(
+        state,
+        user_text,
+        FakeAuthenticationService(client),
+        llm=llm,
+        turn_id="howto-turn",
+    )
+
+    assert "Quer realizar agora?" in reply
+    assert state.pending_flow is expected_topic
+    assert state.active_agent is Agent.TRIAGE
+    assert llm.calls == []
+
+
+def test_howto_affirmative_continues_to_specialist(client: Client) -> None:
+    state = ConversationState(
+        authenticated_client=client, pending_flow=Intent.LIMIT_INCREASE
+    )
+
+    reply = handle_triage(state, "quero sim", FakeAuthenticationService(client))
+
+    assert state.intent is Intent.LIMIT_INCREASE
+    assert state.active_agent is Agent.CREDIT
+    assert state.pending_flow is None
+    assert "prosseguir" in reply.casefold()
+
+
+def test_howto_negative_returns_to_triage(client: Client) -> None:
+    state = ConversationState(
+        authenticated_client=client, pending_flow=Intent.LIMIT_INCREASE
+    )
+
+    reply = handle_triage(state, "agora não", FakeAuthenticationService(client))
+
+    assert state.pending_flow is None
+    assert state.active_agent is Agent.TRIAGE
+    assert "Tudo bem" in reply
+
+
+def test_howto_unclear_keeps_pending_and_repeats(client: Client) -> None:
+    state = ConversationState(
+        authenticated_client=client, pending_flow=Intent.EXCHANGE_RATE
+    )
+
+    reply = handle_triage(state, "não sei", FakeAuthenticationService(client))
+
+    assert state.pending_flow is Intent.EXCHANGE_RATE
+    assert "Responda sim ou não" in reply
+
+
+def test_howto_interview_routes_with_consent_question(client: Client) -> None:
+    state = ConversationState(authenticated_client=client)
+
+    reply = handle_triage(
+        state,
+        "como funciona a entrevista de crédito?",
+        FakeAuthenticationService(client),
+    )
+
+    assert "5 perguntas" in reply
+    assert state.intent is Intent.CREDIT_INTERVIEW
+    assert state.active_agent is Agent.CREDIT_INTERVIEW
+
+
+def test_howto_limit_consult_routes_directly(client: Client) -> None:
+    state = ConversationState(authenticated_client=client)
+
+    handle_triage(state, "como vejo meu limite?", FakeAuthenticationService(client))
+
+    assert state.intent is Intent.CREDIT_LIMIT
+    assert state.active_agent is Agent.CREDIT
 
 
 def test_credit_and_exchange_answer_help_without_consuming_flow(

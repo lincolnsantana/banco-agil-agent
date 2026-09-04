@@ -9,7 +9,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from pydantic import BaseModel, Field
 
 from banco_agil.agents.state import ConversationState
-from banco_agil.domain.enums import Agent, EndReason
+from banco_agil.domain.enums import Agent, EndReason, Intent
 from banco_agil.domain.exceptions import IntegrationError
 from banco_agil.domain.models import EndServiceResult
 from banco_agil.integrations.llm import StructuredLlm
@@ -81,11 +81,17 @@ HELP_REPLY = (
 
 _HELP_PHRASES = (
     "o que voce pode fazer",
+    "o que voce pode realizar",
     "o que voce faz",
     "o que voce oferece",
+    "o que voce realiza",
+    "o que pode realizar",
+    "o que sabe fazer",
     "quais servicos",
     "que servicos",
     "quais opcoes",
+    "suas funcionalidades",
+    "suas funcoes",
     "como funciona",
     "me fale sobre os servicos",
     "o que posso fazer",
@@ -98,6 +104,139 @@ def is_help_request(user_text: str) -> bool:
     if normalized in {"ajuda", "menu"}:
         return True
     return any(phrase in normalized for phrase in _HELP_PHRASES)
+
+
+_HOWTO_MARKERS = (
+    "como faco",
+    "como fazer",
+    "como posso",
+    "como consigo",
+    "como realizo",
+    "como solicitar",
+    "como solicito",
+    "como pedir",
+    "como peco",
+    "como consultar",
+    "como consulto",
+    "como aumento",
+    "como ver",
+    "como vejo",
+    "como funciona",
+    "como comeco",
+    "como iniciar",
+    "me explica",
+    "me explique",
+    "passo a passo",
+    "quais sao os passos",
+    "o que preciso para",
+)
+
+_FLOW_AFFIRMATIVE_WORDS = frozenset(
+    {
+        "sim",
+        "quero",
+        "vamos",
+        "claro",
+        "gostaria",
+        "aceito",
+        "concordo",
+        "bora",
+        "confirmo",
+        "confirmado",
+        "fechado",
+        "prossiga",
+        "continue",
+        "pode",
+    }
+)
+_FLOW_REFUSAL_WORDS = frozenset(
+    {
+        "quero",
+        "vou",
+        "prefiro",
+        "obrigado",
+        "obrigada",
+        "valeu",
+        "dispenso",
+        "recuso",
+        "cancela",
+        "cancelar",
+        "deixa",
+    }
+)
+_FLOW_NEVER_WORDS = frozenset({"nunca", "jamais"})
+
+
+def detect_howto_topic(user_text: str) -> Intent | None:
+    """Mapeia pergunta de como-fazer ao fluxo, sem usar LLM."""
+    normalized = normalized_text(user_text)
+    if not any(marker in normalized for marker in _HOWTO_MARKERS):
+        return None
+    if any(word in normalized for word in ("entrevista", "score", "pontuacao")):
+        return Intent.CREDIT_INTERVIEW
+    if any(
+        word in normalized
+        for word in ("cambio", "cotacao", "dolar", "euro", "libra", "moeda")
+    ):
+        return Intent.EXCHANGE_RATE
+    if "aument" in normalized or "novo limite" in normalized:
+        return Intent.LIMIT_INCREASE
+    if "limite" in normalized:
+        return Intent.CREDIT_LIMIT
+    return None
+
+
+_FLOW_AFFIRMATIVE_PHRASES = frozenset(
+    {
+        "sim",
+        "quero",
+        "vamos",
+        "claro",
+        "com certeza",
+        "pode ser",
+        "gostaria",
+        "aceito",
+        "concordo",
+        "bora",
+        "confirmo",
+        "confirmado",
+        "fechado",
+        "prossiga",
+        "continue",
+        "pode",
+    }
+)
+_FLOW_NEGATIVE_PHRASES = frozenset(
+    {
+        "nao",
+        "agora nao",
+        "depois",
+        "prefiro nao",
+        "dispenso",
+        "cancela",
+        "cancelar",
+        "melhor nao",
+        "deixa",
+        "deixa pra la",
+    }
+)
+
+
+def parse_flow_answer(user_text: str) -> bool | None:
+    """Converte resposta ampla à confirmação de fluxo, sem usar LLM."""
+    normalized = normalize_short_answer(user_text)
+    if normalized in _FLOW_NEGATIVE_PHRASES:
+        return False
+    if normalized in _FLOW_AFFIRMATIVE_PHRASES:
+        return True
+    words = set(normalized.split())
+    if "nao" in words and words & _FLOW_REFUSAL_WORDS:
+        return False
+    if words & _FLOW_AFFIRMATIVE_WORDS:
+        return True
+    if words & _FLOW_NEVER_WORDS:
+        return False
+    return None
 
 
 _FACT_PATTERN = re.compile(

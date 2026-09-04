@@ -47,6 +47,7 @@ class ConversationState(BaseModel):
     pending_birth_date: date | None = Field(default=None, repr=False)
     authenticated_client: Client | None = Field(default=None, repr=False)
     requested_limit: PositiveMoney | None = Field(default=None, repr=False)
+    pending_flow: Intent | None = None
     credit_reanalysis_pending: bool = False
     interview_draft: CreditInterviewDraft = Field(
         default_factory=CreditInterviewDraft,
@@ -73,6 +74,7 @@ class ConversationState(BaseModel):
             "authentication_attempts": self.authentication_attempts,
             "active_agent": self.active_agent.value,
             "intent": self.intent.value,
+            "pending_flow": self.pending_flow.value if self.pending_flow else None,
             "authenticated": self.authenticated,
             "ended": self.ended,
             "end_reason": self.end_reason.value if self.end_reason else None,

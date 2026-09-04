@@ -232,7 +232,8 @@ def main() -> None:
 
     user_input = st.chat_input("Digite sua mensagem")
     if user_input is not None:
-        with st.spinner("Processando..."):
+        st.chat_message("user").write(mask_sensitive_text(user_input.strip()))
+        with st.spinner("Digitando..."):
             submit_user_message(
                 session, service, user_input, generate_welcome_message(llm)
             )
