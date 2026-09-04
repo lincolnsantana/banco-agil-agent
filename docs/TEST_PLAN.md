@@ -20,8 +20,9 @@ Cobertura automatizada correspondente em `tests/e2e/test_journeys.py`.
 4. Envie uma mensagem e confira os balões internos azul/ardósia com texto branco,
    sem títulos internos, e avatares `🧑`/`🏦` alinhados à primeira linha do texto,
    no desktop e no celular.
-5. Alterne o tema do Streamlit para escuro e confirme que página, header nativo,
-   balões, texto e campo de mensagem ficam escuros e legíveis.
+5. Confirme que o menu oferece os temas claro e escuro. Alterne para escuro e
+   verifique que página, header nativo, balões, texto e campo de mensagem ficam
+   escuros e legíveis.
 6. Clique no campo de mensagem e confirme o contorno azul, sem borda vermelha.
 7. Envie uma mensagem e confira `🏦` com três pontos animados enquanto aguarda,
    sem círculo de carregamento ou texto `Digitando...`.
