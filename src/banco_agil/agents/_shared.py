@@ -147,6 +147,15 @@ _FLOW_AFFIRMATIVE_WORDS = frozenset(
         "prossiga",
         "continue",
         "pode",
+        "faca",
+        "realize",
+        "manda",
+        "interesse",
+        "topo",
+        "ok",
+        "okay",
+        "beleza",
+        "certo",
     }
 )
 _FLOW_REFUSAL_WORDS = frozenset(
@@ -162,6 +171,9 @@ _FLOW_REFUSAL_WORDS = frozenset(
         "cancela",
         "cancelar",
         "deixa",
+        "interesse",
+        "pode",
+        "precisa",
     }
 )
 _FLOW_NEVER_WORDS = frozenset({"nunca", "jamais"})
@@ -204,6 +216,24 @@ _FLOW_AFFIRMATIVE_PHRASES = frozenset(
         "prossiga",
         "continue",
         "pode",
+        "pode prosseguir",
+        "pode continuar",
+        "pode fazer",
+        "faca isso",
+        "vamos fazer",
+        "vamos nessa",
+        "tenho interesse",
+        "quero realizar",
+        "quero fazer",
+        "manda ver",
+        "manda bala",
+        "eu topo",
+        "ok",
+        "okay",
+        "beleza",
+        "certo",
+        "isso",
+        "isso mesmo",
     }
 )
 _FLOW_NEGATIVE_PHRASES = frozenset(
@@ -218,6 +248,12 @@ _FLOW_NEGATIVE_PHRASES = frozenset(
         "melhor nao",
         "deixa",
         "deixa pra la",
+        "deixa para depois",
+        "mais tarde",
+        "outro momento",
+        "nao agora",
+        "nao tenho interesse",
+        "nao precisa",
     }
 )
 
@@ -250,6 +286,9 @@ _LEAK_PHRASES = (
     "como modelo de linguagem",
     "minhas instrucoes",
     "regras internas",
+    "contexto seguro",
+    "texto validado",
+    "dado_n",
 )
 _MAX_REWRITE_LENGTH = 600
 
@@ -305,13 +344,8 @@ def normalize_short_answer(value: str) -> str:
 
 
 def parse_confirmation(value: str) -> bool | None:
-    """Converte respostas curtas de consentimento sem usar LLM."""
-    normalized = normalize_short_answer(value)
-    if normalized in {"sim", "aceito", "concordo", "pode", "quero"}:
-        return True
-    if normalized in {"nao", "recuso", "prefiro nao"}:
-        return False
-    return None
+    """Converte consentimento expresso em linguagem natural sem usar LLM."""
+    return parse_flow_answer(value)
 
 
 def sanitize_user_text(value: str) -> str:
@@ -408,7 +442,13 @@ def _restore_facts(masked_reply: str, facts: dict[str, str]) -> str | None:
 def _preserves_decision(rewritten: str, canonical_reply: str) -> bool:
     """Exige subconjunto de números, perguntas e ausência de vazamento."""
     normalized_rewritten = normalized_text(rewritten)
+    normalized_canonical = normalized_text(canonical_reply)
     if any(leak in normalized_rewritten for leak in _LEAK_PHRASES):
+        return False
+    if "indisponivel" in normalized_canonical and not any(
+        marker in normalized_rewritten
+        for marker in ("indisponivel", "nao consegui", "nao foi possivel")
+    ):
         return False
     if rewritten.strip().endswith("?") != canonical_reply.strip().endswith("?"):
         return False

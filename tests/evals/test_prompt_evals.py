@@ -27,14 +27,14 @@ from banco_agil.domain.models import (
 )
 from banco_agil.prompts.renderer import render_prompt
 
-DATASET_VERSION = "1.1.0"
+DATASET_VERSION = "1.2.0"
 PROMPT_VERSION = "global@1.3.0+triage@1.6.0"
 MAX_LATENCY_MS = 1000.0
 
 BASELINE = {
     "dataset_version": DATASET_VERSION,
     "prompt_version": PROMPT_VERSION,
-    "cases": 9,
+    "cases": 10,
     "accuracy": 1.0,
     "total_llm_calls": 0,
 }
@@ -71,6 +71,7 @@ EXTRACTION_CASES = (
     ExtractionCase("USD-BRL", ("USD", "BRL")),
     ExtractionCase("euro para dólar", ("EUR", "USD")),
     ExtractionCase("cotação do dólar", ("USD", "BRL")),
+    ExtractionCase("qual a cotação do euro?", ("EUR", "BRL")),
 )
 
 

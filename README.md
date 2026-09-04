@@ -66,7 +66,8 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
 - Autenticação com 3 tentativas e encerramento cordial.
 - Consulta de limite e solicitação de aumento com decisão por score; aprovação atualiza `clientes.csv`.
 - Entrevista de crédito direta (pedido de score) ou após rejeição, com consentimento e reanálise quando houver limite pendente.
-- Cotação de moedas com tratamento de indisponibilidade.
+- Cotação de moedas por nome (`dólar`, `euro`, `iene` etc.) ou par (`EUR-USD`),
+  com tratamento humanizado de indisponibilidade e sem inventar valores.
 - Encerramento (`encerrar`, `sair`, `finalizar`…) prioritário em qualquer nó.
 - Pergunta sobre o atendimento (`o que você pode fazer?`) respondida em
   qualquer nó, exceto dentro da entrevista.

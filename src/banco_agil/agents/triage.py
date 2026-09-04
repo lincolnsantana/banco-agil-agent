@@ -101,12 +101,12 @@ def _handle_howto(state: ConversationState, topic: Intent) -> str:
             "Na entrevista, faço 5 perguntas — renda, emprego, despesas, "
             "dependentes e dívidas —, recalculo seu score e, se houver um "
             "pedido rejeitado, reanaliso na hora. Deseja realizar a "
-            "entrevista de crédito? Responda sim ou não."
+            "entrevista de crédito agora?"
         )
     if topic is Intent.EXCHANGE_RATE:
         explanation = (
-            "Para consultar, me diga o par de moedas (por exemplo: USD-BRL) "
-            "ou pergunte direto o valor do dólar hoje."
+            "Para consultar, basta dizer o nome da moeda, como dólar ou euro. "
+            "Se quiser outra conversão, também pode informar um par, como EUR-USD."
         )
     else:
         explanation = (
@@ -116,7 +116,7 @@ def _handle_howto(state: ConversationState, topic: Intent) -> str:
     state.pending_flow = topic
     state.intent = Intent.UNKNOWN
     state.active_agent = Agent.TRIAGE
-    return f"{explanation} Quer realizar agora? Responda sim ou não."
+    return f"{explanation} Quer que eu faça isso agora?"
 
 
 def _handle_flow_answer(state: ConversationState, user_text: str) -> str:
@@ -138,7 +138,7 @@ def _handle_flow_answer(state: ConversationState, user_text: str) -> str:
             "Tudo bem. Se mudar de ideia, é só pedir. Posso ajudar com limite "
             "de crédito ou cotação de moedas. O que deseja?"
         )
-    return "Não entendi. Deseja realizar? Responda sim ou não."
+    return "Não consegui confirmar. Quer que eu faça isso agora?"
 
 
 def _handle_authentication(
@@ -207,7 +207,10 @@ def _handle_authentication(
 
 def _deterministic_intent(user_text: str) -> Intent | None:
     normalized = normalized_text(user_text)
-    if any(word in normalized for word in ("cambio", "cotacao", "dolar", "euro")):
+    if any(
+        word in normalized
+        for word in ("cambio", "cotacao", "dolar", "euro", "moeda", "moedas")
+    ):
         return Intent.EXCHANGE_RATE
     if any(
         term in normalized

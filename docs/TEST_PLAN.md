@@ -63,7 +63,7 @@ análise aprovada na mesma resposta. CSVs: primeira linha `rejeitado`, segunda
 ## CT04 — Câmbio e indisponibilidade
 
 1. Autentique-se.
-2. Envie `cotação do dólar`.
+2. Envie `qual a cotação do dólar?` e `qual a cotação do euro?`, sem informar o par.
 
 Resultado esperado: par, valor, fonte e horário confirmados
 (ex.: `USD-BRL ... 5,25 ... AwesomeAPI ...`). Com a API fora do ar, resposta
@@ -114,7 +114,7 @@ o baseline no mesmo commit e registre abaixo a comparação entre versões
 
 | Versão de prompt | Dataset | Acerto | Chamadas LLM | Latência média | Consumo máx. |
 | --- | --- | --- | --- | --- | --- |
-| `global@1.3.0` + triagem `1.6.0` + câmbio `1.4.0` + demais `1.3.0` | `1.1.0` | 1.0 (9/9) | 0 | < 1.000 ms/caso | < 2.700 caracteres |
+| `global@1.3.0` + triagem `1.6.0` + câmbio `1.4.0` + demais `1.3.0` | `1.2.0` | 1.0 (10/10) | 0 | < 1.000 ms/caso | < 2.700 caracteres |
 
 ## Registro de execução
 

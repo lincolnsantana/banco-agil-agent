@@ -506,7 +506,7 @@ def test_howto_explains_and_asks_for_confirmation(
         turn_id="howto-turn",
     )
 
-    assert "Quer realizar agora?" in reply
+    assert "Quer que eu faça isso agora?" in reply
     assert state.pending_flow is expected_topic
     assert state.active_agent is Agent.TRIAGE
     assert llm.calls == []
@@ -525,12 +525,40 @@ def test_howto_affirmative_continues_to_specialist(client: Client) -> None:
     assert "prosseguir" in reply.casefold()
 
 
-def test_howto_negative_returns_to_triage(client: Client) -> None:
+@pytest.mark.parametrize(
+    "answer",
+    (
+        "quero.",
+        "pode prosseguir",
+        "vamos fazer",
+        "tenho interesse",
+        "faça isso por favor",
+        "manda ver",
+        "beleza",
+        "isso mesmo",
+    ),
+)
+def test_howto_accepts_natural_affirmative_answers(client: Client, answer: str) -> None:
     state = ConversationState(
         authenticated_client=client, pending_flow=Intent.LIMIT_INCREASE
     )
 
-    reply = handle_triage(state, "agora não", FakeAuthenticationService(client))
+    handle_triage(state, answer, FakeAuthenticationService(client))
+
+    assert state.intent is Intent.LIMIT_INCREASE
+    assert state.active_agent is Agent.CREDIT
+    assert state.pending_flow is None
+
+
+@pytest.mark.parametrize(
+    "answer", ("agora não", "não tenho interesse", "deixa para depois", "mais tarde")
+)
+def test_howto_negative_returns_to_triage(client: Client, answer: str) -> None:
+    state = ConversationState(
+        authenticated_client=client, pending_flow=Intent.LIMIT_INCREASE
+    )
+
+    reply = handle_triage(state, answer, FakeAuthenticationService(client))
 
     assert state.pending_flow is None
     assert state.active_agent is Agent.TRIAGE
@@ -545,7 +573,7 @@ def test_howto_unclear_keeps_pending_and_repeats(client: Client) -> None:
     reply = handle_triage(state, "não sei", FakeAuthenticationService(client))
 
     assert state.pending_flow is Intent.EXCHANGE_RATE
-    assert "Responda sim ou não" in reply
+    assert "Quer que eu faça isso agora?" in reply
 
 
 def test_howto_interview_routes_with_consent_question(client: Client) -> None:
@@ -757,7 +785,7 @@ def test_interview_requires_consent_before_collecting(client: Client) -> None:
     unclear_reply = handle_credit_interview(state, "talvez", service)
     accepted_reply = handle_credit_interview(state, "sim", service)
 
-    assert "sim ou não" in unclear_reply.casefold()
+    assert "entrevista de crédito agora?" in unclear_reply.casefold()
     assert "renda mensal" in accepted_reply.casefold()
     assert service.starts == [True]
     assert service.answers == []
@@ -841,7 +869,7 @@ def test_generic_interview_mention_still_asks_for_consent(client: Client) -> Non
 
     reply = handle_credit_interview(state, "preciso pensar", service)
 
-    assert "deseja realizar" in reply.casefold()
+    assert "quer realizar" in reply.casefold()
     assert service.starts == []
 
 
@@ -1018,6 +1046,9 @@ def test_exchange_maps_dollar_and_returns_confirmed_quote(client: Client) -> Non
         ("EUR-BRL", ("EUR", "BRL"), ("🇪🇺", "euro")),
         ("qual o valor do euro hoje?", ("EUR", "BRL"), ("🇪🇺", "euro")),
         ("qual o valor do dólar hoje?", ("USD", "BRL"), ("🇺🇸", "dólar")),
+        ("qual a cotação do euro?", ("EUR", "BRL"), ("🇪🇺", "euro")),
+        ("qual a cotação do dólar?", ("USD", "BRL"), ("🇺🇸", "dólar")),
+        ("cotação JPY", ("JPY", "BRL"), ("🇯🇵", "iene")),
     ),
 )
 def test_exchange_accepts_free_pair_forms(
@@ -1060,6 +1091,19 @@ def test_exchange_failure_never_invents_rate(client: Client) -> None:
     assert "indisponível" in reply.casefold()
     assert "tente novamente" in reply.casefold()
     assert not any(character.isdigit() for character in reply)
+
+
+def test_exchange_lists_supported_names_without_calling_provider(
+    client: Client,
+) -> None:
+    service = FakeExchangeService(None)
+    state = ConversationState(authenticated_client=client, active_agent=Agent.EXCHANGE)
+
+    reply = handle_exchange(state, "quais moedas posso consultar?", service)
+
+    assert all(name in reply.casefold() for name in ("dólar", "euro", "iene", "yuan"))
+    assert "só o nome" in reply.casefold()
+    assert service.calls == []
 
 
 def test_exchange_understands_named_cross_currency_pair(client: Client) -> None:

@@ -44,10 +44,10 @@ def handle_credit_interview(
 
     if not state.interview_draft.consent_given:
         consent = _explicit_interview_consent(user_text)
-        if consent is None:
+        if consent is None and not _looks_like_interview_request(user_text):
             consent = parse_confirmation(user_text)
         if consent is None:
-            return "Deseja realizar a entrevista de crédito? Responda sim ou não."
+            return "Quer realizar a entrevista de crédito agora?"
         try:
             progress = service.start(state, consent)
         except DomainError:
@@ -136,7 +136,7 @@ def _explicit_interview_consent(user_text: str) -> bool | None:
     """Trata pedido explícito de entrevista como consentimento ou recusa.
 
     O texto precisa mencionar a entrevista; negação explícita nunca vira
-    consentimento e pergunta genérica continua pedindo `sim ou não`.
+    consentimento e pergunta genérica continua pedindo confirmação.
     """
     normalized = normalize_short_answer(user_text)
     if "entrevista" not in normalized:
@@ -149,6 +149,12 @@ def _explicit_interview_consent(user_text: str) -> bool | None:
     if "quero" in words and not (words & _INTERVIEW_INFORMATIONAL_MARKERS):
         return True
     return None
+
+
+def _looks_like_interview_request(user_text: str) -> bool:
+    """Evita tratar a intenção original como resposta à pergunta de consentimento."""
+    words = set(normalize_short_answer(user_text).split())
+    return bool(words & {"aumentar", "melhorar", "rever", "score", "pontuacao"})
 
 
 def _question(field: InterviewField | None) -> str:

@@ -23,16 +23,51 @@ _BRASILIA_TZ = ZoneInfo("America/Sao_Paulo")
 
 _CURRENCY_NAMES = {
     "dolar": "USD",
+    "dolar americano": "USD",
     "euro": "EUR",
     "libra": "GBP",
+    "libra esterlina": "GBP",
     "real": "BRL",
+    "peso argentino": "ARS",
+    "iene": "JPY",
+    "franco suico": "CHF",
+    "dolar canadense": "CAD",
+    "dolar australiano": "AUD",
+    "yuan": "CNY",
+    "bitcoin": "BTC",
 }
+
+_CURRENCY_LIST_REQUESTS = (
+    "quais moedas",
+    "que moedas",
+    "moedas disponiveis",
+    "moedas aceita",
+    "moedas suporta",
+    "moedas consulta",
+    "moedas posso",
+    "moedas que",
+    "tipos de moeda",
+    "sobre as moedas",
+)
+
+_CURRENCY_LIST_REPLY = (
+    "Posso consultar dólar americano, euro, libra esterlina, peso argentino, "
+    "iene, franco suíço, dólar canadense, dólar australiano, yuan e bitcoin "
+    "em reais. Você pode informar só o nome, como 'cotação do euro', ou um "
+    "par específico, como EUR-USD. Qual cotação deseja consultar?"
+)
 
 _CURRENCY_FLAGS = {
     "USD": "🇺🇸",
     "EUR": "🇪🇺",
     "GBP": "🇬🇧",
     "BRL": "🇧🇷",
+    "ARS": "🇦🇷",
+    "JPY": "🇯🇵",
+    "CHF": "🇨🇭",
+    "CAD": "🇨🇦",
+    "AUD": "🇦🇺",
+    "CNY": "🇨🇳",
 }
 
 _CURRENCY_LABELS = {
@@ -40,6 +75,13 @@ _CURRENCY_LABELS = {
     "EUR": "euro",
     "GBP": "libra",
     "BRL": "real",
+    "ARS": "peso argentino",
+    "JPY": "iene",
+    "CHF": "franco suíço",
+    "CAD": "dólar canadense",
+    "AUD": "dólar australiano",
+    "CNY": "yuan",
+    "BTC": "bitcoin",
 }
 
 
@@ -59,9 +101,16 @@ def handle_exchange(
     if is_help_request(user_text):
         return HELP_REPLY
 
+    normalized = normalized_text(user_text)
+    if any(request in normalized for request in _CURRENCY_LIST_REQUESTS):
+        return _CURRENCY_LIST_REPLY
+
     pair = _parse_currency_pair(user_text)
     if pair is None:
-        return "Informe o par de moedas desejado, por exemplo USD-BRL."
+        return (
+            "Qual moeda você quer consultar? Pode dizer apenas o nome, como "
+            "dólar ou euro, ou informar um par, como EUR-USD."
+        )
     if pair[0] == pair[1]:
         return "Informe duas moedas diferentes para consultar a cotação."
 
@@ -130,14 +179,20 @@ def _parse_currency_pair(user_text: str) -> tuple[str, str] | None:
         return explicit_pair.group(1).upper(), explicit_pair.group(2).upper()
 
     normalized = normalized_text(user_text)
-    names = "|".join(_CURRENCY_NAMES)
+    names = "|".join(
+        re.escape(alias) for alias in sorted(_CURRENCY_NAMES, key=len, reverse=True)
+    )
     named_pair = re.search(rf"\b({names})\s+para\s+({names})\b", normalized)
     if named_pair is not None:
         return (
             _CURRENCY_NAMES[named_pair.group(1)],
             _CURRENCY_NAMES[named_pair.group(2)],
         )
-    for alias, currency in _CURRENCY_NAMES.items():
-        if alias in normalized.split() and currency != "BRL":
+    for alias in sorted(_CURRENCY_NAMES, key=len, reverse=True):
+        currency = _CURRENCY_NAMES[alias]
+        if re.search(rf"\b{re.escape(alias)}\b", normalized) and currency != "BRL":
             return currency, "BRL"
+    standalone_code = re.search(r"\b([A-Za-z]{3})\b", user_text)
+    if standalone_code is not None and standalone_code.group(1).upper() != "BRL":
+        return standalone_code.group(1).upper(), "BRL"
     return None

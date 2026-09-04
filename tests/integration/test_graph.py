@@ -100,6 +100,7 @@ class RecordingExchangeProvider:
     """Retorna cotacao fixa e registra os pares consultados."""
 
     calls: list[tuple[str, str]] = field(default_factory=list)
+    unavailable: bool = False
 
     def get_exchange_rate(
         self,
@@ -108,6 +109,8 @@ class RecordingExchangeProvider:
     ) -> ExchangeQuote:
         """Retorna cotacao ficticia confirmada."""
         self.calls.append((base_currency, quote_currency))
+        if self.unavailable:
+            raise IntegrationError("provider unavailable")
         return ExchangeQuote(
             base_currency=base_currency,
             quote_currency=quote_currency,
@@ -289,6 +292,55 @@ def test_exchange_answer_is_rewritten_by_llm_without_changing_facts(
     assert len(llm.calls) == 1
 
 
+@pytest.mark.parametrize("currency", ("euro", "dólar"))
+def test_exchange_name_with_question_mark_is_queried_in_same_turn(
+    client: Client, currency: str
+) -> None:
+    harness = build_harness(client)
+    state = ConversationState(authenticated_client=client)
+
+    turn = harness.service.handle_turn(state, (), f"qual a cotação do {currency}?")
+
+    expected = "EUR" if currency == "euro" else "USD"
+    assert harness.exchange.calls == [(expected, "BRL")]
+    assert "Informe o par" not in turn.reply
+
+
+def test_humanizer_rejects_safe_context_leak(client: Client) -> None:
+    llm = RecordingLlm(
+        {"reply": "Informe a moeda desejada. Contexto seguro: cotacao euro."}
+    )
+    harness = build_harness(client, llm)
+    state = ConversationState(authenticated_client=client)
+
+    turn = harness.service.handle_turn(state, (), "quais moedas posso consultar?")
+
+    assert "Contexto seguro" not in turn.reply
+    assert "dólar americano" in turn.reply
+
+
+def test_exchange_unavailable_is_humanized_without_inventing_rate(
+    client: Client,
+) -> None:
+    llm = RecordingLlm(
+        {
+            "reply": (
+                "Poxa, não consegui consultar a cotação agora. "
+                "Tente novamente daqui a pouco."
+            )
+        }
+    )
+    harness = build_harness(client, llm)
+    harness.exchange.unavailable = True
+    state = ConversationState(authenticated_client=client)
+
+    turn = harness.service.handle_turn(state, (), "qual a cotação do euro?")
+
+    assert "não consegui" in turn.reply.casefold()
+    assert not any(character.isdigit() for character in turn.reply)
+    assert len(llm.calls) == 1
+
+
 def test_approved_increase_updates_client_limit(client: Client) -> None:
     harness = build_harness(client)
     state = ConversationState(
@@ -336,7 +388,7 @@ def test_howto_increase_confirms_then_runs_specialist_flow(
     state = ConversationState(authenticated_client=client)
 
     turn = harness.service.handle_turn(state, (), "como posso aumentar o meu limite?")
-    assert "Quer realizar agora?" in turn.reply
+    assert "Quer que eu faça isso agora?" in turn.reply
     assert state.pending_flow is Intent.LIMIT_INCREASE
 
     turn = harness.service.handle_turn(state, turn.history, "sim, quero")
