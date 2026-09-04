@@ -14,11 +14,15 @@ Cobertura automatizada correspondente em `tests/e2e/test_journeys.py`.
 ## CT00 — Abertura da interface
 
 1. Inicie `streamlit run app.py`.
-2. Observe a primeira mensagem antes de digitar.
+2. Confirme a barra superior `🏦 Banco Ágil`, a tipografia Inter e o fundo branco.
+3. Observe a primeira mensagem antes de digitar.
+4. Envie uma mensagem e confira os balões separados com os avatares `🧑` e `🏦`
+   no desktop e no celular.
 
 Resultado esperado: o assistente se apresenta, informa que atende limite,
 aumento, entrevista de crédito e câmbio, explica que a autenticação vem primeiro
-e já solicita o CPF. Não há botões: tudo acontece na conversa.
+e já solicita o CPF. Não há botões: tudo acontece na conversa. Barra, balões,
+avatares e campo de mensagem permanecem legíveis nos dois tamanhos de tela.
 
 ## CT01 — Autenticação e consulta de limite
 

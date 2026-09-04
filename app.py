@@ -30,6 +30,144 @@ _CONVERSATION_KEY = "conversation"
 _HISTORY_KEY = "history"
 _NOTICE_KEY = "notice"
 
+_CHAT_AVATARS = {"assistant": "🏦", "user": "🧑"}
+
+_UI_STYLES = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+    --agil-blue: #123b6d;
+    --agil-border: #dce3eb;
+    --agil-muted: #607086;
+}
+
+html,
+body,
+[data-testid="stAppViewContainer"],
+[data-testid="stAppViewContainer"] * {
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+[data-testid="stHeader"] {
+    background: #ffffff;
+}
+
+[data-testid="stMainBlockContainer"] {
+    max-width: 880px;
+    padding-top: 1.25rem;
+    padding-bottom: 7rem;
+}
+
+.bank-navbar {
+    position: sticky;
+    top: 0.5rem;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    min-height: 64px;
+    margin-bottom: 1.5rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--agil-border);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 8px 28px rgba(18, 59, 109, 0.08);
+    backdrop-filter: blur(12px);
+}
+
+.bank-navbar__icon {
+    display: grid;
+    width: 42px;
+    height: 42px;
+    place-items: center;
+    border-radius: 12px;
+    background: #edf4fb;
+    font-size: 1.4rem;
+}
+
+.bank-navbar__title {
+    color: var(--agil-blue);
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+.bank-navbar__subtitle {
+    color: var(--agil-muted);
+    font-size: 0.78rem;
+    font-weight: 500;
+}
+
+[data-testid="stChatMessage"] {
+    width: fit-content;
+    max-width: min(82%, 680px);
+    margin: 0.55rem 0;
+    padding: 0.8rem 1rem;
+    border: 1px solid var(--agil-border);
+    border-radius: 18px;
+    background: #ffffff;
+    box-shadow: 0 3px 14px rgba(18, 59, 109, 0.06);
+}
+
+[data-testid="stChatMessage"][aria-label="Chat message from user"] {
+    margin-left: auto;
+    border-color: #b9cee4;
+    border-bottom-right-radius: 5px;
+}
+
+[data-testid="stChatMessage"][aria-label="Chat message from assistant"] {
+    margin-right: auto;
+    border-bottom-left-radius: 5px;
+}
+
+[data-testid="stChatMessageContent"] p {
+    color: #17263a;
+    line-height: 1.55;
+}
+
+[data-testid="stChatInput"] {
+    border-color: var(--agil-border);
+    border-radius: 16px;
+    background: #ffffff;
+    box-shadow: 0 8px 24px rgba(18, 59, 109, 0.1);
+}
+
+[data-testid="stChatInput"] textarea {
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+@media (max-width: 640px) {
+    [data-testid="stMainBlockContainer"] {
+        padding: 0.75rem 0.8rem 6.5rem;
+    }
+
+    .bank-navbar {
+        top: 0.25rem;
+        min-height: 58px;
+        margin-bottom: 1rem;
+        border-radius: 14px;
+    }
+
+    [data-testid="stChatMessage"] {
+        max-width: 92%;
+    }
+}
+</style>
+"""
+
+_NAVBAR = """
+<nav class="bank-navbar" aria-label="Banco Ágil">
+    <span class="bank-navbar__icon" aria-hidden="true">🏦</span>
+    <span>
+        <span class="bank-navbar__title">Banco Ágil</span><br>
+        <span class="bank-navbar__subtitle">Atendimento digital</span>
+    </span>
+</nav>
+"""
+
 _CPF_FORMATTED_PATTERN = re.compile(r"\d{3}\.\d{3}\.\d{3}-\d{2}")
 _CPF_PLAIN_PATTERN = re.compile(r"\b\d{11}\b")
 _ISO_BIRTH_DATE_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
@@ -94,6 +232,16 @@ def history_for_display(history: Sequence[BaseMessage]) -> list[tuple[str, str]]
             continue
         displayed.append((role, mask_sensitive_text(message.content)))
     return displayed
+
+
+def chat_avatar(role: str) -> str:
+    """Retorna o avatar visual seguro para cada participante do chat."""
+    return _CHAT_AVATARS.get(role, "💬")
+
+
+def render_chat_message(role: str, text: str) -> None:
+    """Renderiza uma mensagem no balão e avatar correspondentes."""
+    st.chat_message(role, avatar=chat_avatar(role)).write(text)
 
 
 def build_conversation_service(settings: Settings) -> ConversationService:
@@ -206,7 +354,8 @@ def _get_runtime() -> tuple[ConversationService, GroqStructuredLlm | None]:
 def main() -> None:
     """Renderiza o chat e encaminha cada entrada ao serviço de conversa."""
     st.set_page_config(page_title="Banco Ágil - Atendimento", page_icon="🏦")
-    st.title("🏦 Banco Ágil - Atendimento")
+    st.markdown(_UI_STYLES, unsafe_allow_html=True)
+    st.markdown(_NAVBAR, unsafe_allow_html=True)
     settings = Settings()
     st.caption(llm_status_message(settings))
     session = cast(MutableMapping[str, object], st.session_state)
@@ -219,7 +368,7 @@ def main() -> None:
     state = cast(ConversationState, session[_CONVERSATION_KEY])
     history = cast(Sequence[BaseMessage], session[_HISTORY_KEY])
     for role, safe_text in history_for_display(history):
-        st.chat_message(role).write(safe_text)
+        render_chat_message(role, safe_text)
 
     notice = session[_NOTICE_KEY]
     if isinstance(notice, str) and notice:
@@ -232,7 +381,7 @@ def main() -> None:
 
     user_input = st.chat_input("Digite sua mensagem")
     if user_input is not None:
-        st.chat_message("user").write(mask_sensitive_text(user_input.strip()))
+        render_chat_message("user", mask_sensitive_text(user_input.strip()))
         with st.spinner("Digitando..."):
             submit_user_message(
                 session, service, user_input, generate_welcome_message(llm)

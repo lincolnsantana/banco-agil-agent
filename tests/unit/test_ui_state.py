@@ -14,6 +14,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage  # noqa
 import app  # noqa: E402
 from app import (  # noqa: E402
     build_conversation_service,
+    chat_avatar,
     history_for_display,
     init_session,
     llm_status_message,
@@ -215,6 +216,12 @@ def test_history_for_display_never_exposes_raw_cpf() -> None:
     assert displayed[0][0] == "user"
     assert displayed[1][0] == "assistant"
     assert "01234567890" not in displayed[0][1]
+
+
+def test_chat_avatars_use_person_and_bank_emojis() -> None:
+    assert chat_avatar("user") == "🧑"
+    assert chat_avatar("assistant") == "🏦"
+    assert chat_avatar("unknown") == "💬"
 
 
 def test_build_service_without_key_supports_deterministic_turns(
