@@ -6,7 +6,7 @@ from decimal import Decimal
 from typing import TypeVar
 
 import pytest
-from langchain_core.messages import BaseMessage, SystemMessage
+from langchain_core.messages import BaseMessage
 from pydantic import BaseModel
 
 from banco_agil.agents._shared import humanize_reply
@@ -223,7 +223,9 @@ def _increase_result(status: CreditRequestStatus) -> LimitIncreaseResult:
     )
 
 
-@pytest.mark.parametrize("agent", list(Agent))
+@pytest.mark.parametrize(
+    "agent", [Agent.CREDIT, Agent.CREDIT_INTERVIEW, Agent.EXCHANGE]
+)
 def test_humanization_rewrites_reply_without_exposing_data(
     client: Client,
     agent: Agent,
@@ -243,7 +245,7 @@ def test_humanization_rewrites_reply_without_exposing_data(
 
     assert reply == "Claro! Resposta canônica com R$ 2.500,00."
     _, messages, version = llm.calls[0]
-    assert version == f"global@1.3.0+{agent.value}@1.2.0"
+    assert version == f"global@1.3.0+{agent.value}@1.3.0"
     assert "01234567890" not in str(messages)
     assert "2.500,00" not in str(messages)
     assert "R$ 2.500,00" not in str(messages)
@@ -292,30 +294,13 @@ def test_triage_third_failure_ends_without_disclosing_wrong_field() -> None:
     assert "nascimento" not in reply.casefold()
 
 
-def test_llm_classifies_intent_before_deterministic_parser(
-    client: Client,
-) -> None:
+def test_triage_routes_clear_intent_deterministically(client: Client) -> None:
     state = ConversationState(authenticated_client=client)
-    llm = RecordingLlm({"intent": "other"})
 
     reply = handle_triage(
         state,
         "quero aumentar meu limite",
         FakeAuthenticationService(client),
-        llm=llm,
-        turn_id="turn-1",
-    )
-
-    assert "limite" in reply.casefold()
-    assert state.active_agent is Agent.TRIAGE
-    assert len(llm.calls) == 1
-
-
-def test_deterministic_parser_routes_without_llm(client: Client) -> None:
-    state = ConversationState(authenticated_client=client)
-
-    reply = handle_triage(
-        state, "quero aumentar meu limite", FakeAuthenticationService(client)
     )
 
     assert reply
@@ -323,31 +308,33 @@ def test_deterministic_parser_routes_without_llm(client: Client) -> None:
     assert state.active_agent is Agent.CREDIT
 
 
-def test_ambiguous_intent_uses_one_structured_llm_call(client: Client) -> None:
+def test_triage_keeps_ambiguous_intent_in_triage(client: Client) -> None:
     state = ConversationState(authenticated_client=client)
-    llm = RecordingLlm({"intent": "exchange_rate"})
 
-    handle_triage(
+    reply = handle_triage(state, "preciso de ajuda", FakeAuthenticationService(client))
+
+    assert "limite" in reply.casefold()
+    assert "cotação" in reply.casefold()
+    assert state.active_agent is Agent.TRIAGE
+
+
+def test_humanization_does_not_call_llm_for_triage(client: Client) -> None:
+    state = ConversationState(authenticated_client=client)
+    llm = RecordingLlm({"reply": "Texto alterado."})
+    canonical = "Posso ajudar com limite ou cotação?"
+
+    reply = humanize_reply(
         state,
-        (
-            "Meu nome é Ana, CPF 01234567890, emprego formal, tenho dívidas e "
-            "preciso resolver outra coisa"
-        ),
-        FakeAuthenticationService(client),
-        llm=llm,
-        turn_id="turn-2",
+        canonical,
+        llm,
+        "turn-2",
+        responding_agent=Agent.TRIAGE,
+        recent_messages=[],
+        user_text="preciso resolver outra coisa",
     )
 
-    assert state.active_agent is Agent.EXCHANGE
-    assert len(llm.calls) == 1
-    turn_id, messages, version = llm.calls[0]
-    assert turn_id == "turn-2"
-    assert sum(isinstance(message, SystemMessage) for message in messages) == 1
-    assert version == "global@1.3.0+triage@1.2.0"
-    assert "01234567890" not in str(messages[1].content)
-    assert "Ana" not in str(messages[1].content)
-    assert "formal" not in str(messages[1].content)
-    assert messages[1].content == "preciso resolver outra coisa"
+    assert reply == canonical
+    assert llm.calls == []
 
 
 def test_authentication_repository_failure_returns_controlled_reply() -> None:

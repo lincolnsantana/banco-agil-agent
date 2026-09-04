@@ -9,7 +9,11 @@ from langchain_core.messages import SystemMessage
 from banco_agil.agents.state import ConversationState, CreditInterviewDraft
 from banco_agil.domain.enums import Agent, EmploymentType, Intent
 from banco_agil.domain.models import Client
-from banco_agil.prompts.registry import PROMPT_REGISTRY, PromptDefinition
+from banco_agil.prompts.registry import (
+    PROMPT_REGISTRY,
+    WELCOME_PROMPT_DEFINITION,
+    PromptDefinition,
+)
 from banco_agil.prompts.renderer import compact_state, render_prompt
 
 EXPECTED_TOOLS = {
@@ -30,12 +34,25 @@ def test_registry_uses_documented_ids_versions_variables_and_limits() -> None:
     assert PROMPT_REGISTRY.global_prompt.character_limit == 1_200
     assert PROMPT_REGISTRY.global_prompt.variables == frozenset()
 
+    assert WELCOME_PROMPT_DEFINITION.prompt_id == "welcome"
+    assert WELCOME_PROMPT_DEFINITION.version == "1.0.0"
+    assert WELCOME_PROMPT_DEFINITION.variables == frozenset()
+    assert WELCOME_PROMPT_DEFINITION.character_limit == 800
+
     for agent in Agent:
         definition = PROMPT_REGISTRY.for_agent(agent)
         assert definition.prompt_id == agent.value
-        assert definition.version == "1.2.0"
+        expected_version = "1.2.0" if agent is Agent.TRIAGE else "1.3.0"
+        assert definition.version == expected_version
         assert definition.character_limit == 1_000
         assert definition.variables == frozenset({"state"})
+
+
+def test_three_llm_specialists_require_natural_contextual_replies() -> None:
+    for agent in (Agent.CREDIT, Agent.CREDIT_INTERVIEW, Agent.EXCHANGE):
+        prompt = PROMPT_REGISTRY.for_agent(agent).template.casefold()
+        assert "natural" in prompt
+        assert "preserve" in prompt
 
 
 def test_prompt_definition_rejects_undeclared_template_variable() -> None:
@@ -57,7 +74,10 @@ def test_rendering_produces_one_bounded_system_message_for_active_agent(
     specialist = PROMPT_REGISTRY.for_agent(agent)
 
     assert isinstance(rendered.system_message, SystemMessage)
-    assert rendered.prompt_version == f"global@1.3.0+{agent.value}@1.2.0"
+    specialist_version = "1.2.0" if agent is Agent.TRIAGE else "1.3.0"
+    assert rendered.prompt_version == (
+        f"global@1.3.0+{agent.value}@{specialist_version}"
+    )
     assert "{{" not in str(rendered.system_message.content)
     assert len(PROMPT_REGISTRY.global_prompt.template) <= 1_200
     assert len(specialist.template) <= 1_000

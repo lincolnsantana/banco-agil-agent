@@ -172,9 +172,6 @@ def build_graph(dependencies: GraphDependencies) -> ConversationGraph:
             state["conversation"],
             state["user_text"],
             dependencies.authentication,
-            llm=dependencies.llm,
-            turn_id=state["turn_id"],
-            recent_messages=_previous_messages(state),
         )
         return _handler_update(state, reply, Agent.TRIAGE)
 

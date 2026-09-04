@@ -36,9 +36,9 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
   retorna ao crédito para reanálise; `MAX_HANDLER_STEPS=2` + `recursion_limit=8`
   impedem loops; histórico limitado às 6 mensagens recentes.
 - **Nós** (`agents/triage.py`, `credit.py`, `credit_interview.py`,
-  `exchange.py`): regras protegidas continuam determinísticas; com Groq, a
-  intenção em linguagem livre é classificada antes do parser e a resposta final
-  pode ser redigida pelo modelo, respeitando o orçamento de duas chamadas.
+  `exchange.py`): triagem, autenticação e roteamento são determinísticos; Crédito,
+  Entrevista e Câmbio podem ter a resposta final redigida pelo Groq, com uma
+  chamada por turno e fallback canônico.
 - **Prompts** (`prompts/`): um system message = global + especialista ativo +
   estado mínimo sanitizado (sem PII, < 500 caracteres); só as tools do
   especialista ativo são expostas; IDs/versões testados contra `PROMPTS.md`.
@@ -63,10 +63,9 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
 - Entrevista de crédito completa com reanálise automática.
 - Cotação de moedas com tratamento de indisponibilidade.
 - Encerramento (`encerrar`, `sair`, `finalizar`…) prioritário em qualquer nó.
-- UI Streamlit com apresentação inicial, ações responsivas, sessão persistente,
-  Reiniciar (limpa a conversa sem apagar persistência) e mascaramento de dados.
-- Auditoria técnica consultável por sessão + métricas que distinguem turnos com
-  0 a 2 chamadas LLM.
+- UI Streamlit com apresentação inicial gerada pelo Groq quando ativo, ações
+  responsivas, sessão persistente, reinício e mascaramento de dados.
+- Auditoria técnica consultável por sessão + métricas por chamada de LLM.
 - Mais de 200 testes (unitários, integração e E2E) + `docs/TEST_PLAN.md` de
   homologação.
 
@@ -98,14 +97,12 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
 | Concorrência | filelock + `os.replace` | Escrita atômica em arquivos mutáveis |
 | Qualidade | Ruff + Mypy estrito + Pytest + RESPX | Contrato de cada tarefa do projeto |
 
-**Uso do LLM**: o Groq classifica a intenção em linguagem livre antes do parser
-determinístico (com fallback sem credencial ou em falha); CPF, data, números,
-sim/não, encerramento e autenticação continuam determinísticos. Orçamento de no
-máximo 2 chamadas/turno (classificação + redação final); system message único
-(global + especialista); somente tools do especialista ativo; estado sem PII
-(≤ 500 caracteres); temperatura `0.3`, saída de 500 tokens, timeout de 30 s;
-métricas por chamada. A redação final usa fatos mascarados e só é aceita com
-números subconjunto do canônico, sem inverter decisões.
+**Uso do LLM**: o Groq gera as boas-vindas por um prompt isolado, sem estado,
+histórico ou tools. A triagem não chama o modelo. Crédito, Entrevista e Câmbio
+usam no máximo uma chamada por turno para redigir o texto canônico com fatos
+mascarados. CPF, data, números, sim/não, cálculos, encerramento e autenticação
+continuam determinísticos. Temperatura `0.3`, saída de 500 tokens e timeout de
+30 s; saída inválida ou falha preserva integralmente a resposta canônica.
 
 **Limitações**: sem RAG/banco vetorial (fora do escopo); sem checkpoint de
 sessão persistente (T019, opcional); câmbio exige rede; LLM nunca decide regra
@@ -132,9 +129,10 @@ A interface informa no topo se o Groq está ativo e qual modelo foi carregado.
 Sem `BANCO_AGIL_GROQ_API_KEY`, ela sinaliza **Modo determinístico**: nesse modo,
 nenhuma chamada ao provedor é realizada. Com Groq ativo, cada especialista cria
 primeiro uma resposta canônica a partir das regras e tools em Python. O modelo
-tenta classificar a intenção antes do parser determinístico e pode redigir a
-resposta final completa a partir do canônico com fatos mascarados, sem alterar
-fatos, valores ou decisões. O limite é de duas chamadas por turno.
+gera a apresentação inicial e redige as respostas de Crédito, Entrevista e
+Câmbio a partir do canônico com fatos mascarados, sem alterar fatos, valores ou
+decisões. A triagem permanece determinística e cada turno especialista faz no
+máximo uma chamada.
 
 Roteiro na UI: informe o CPF → informe o nascimento → `qual é meu limite?`
 (`R$ 2.500,00`) → `quero aumentar meu limite` → `4000` → `Encerrar atendimento`

@@ -152,6 +152,7 @@ def humanize_reply(
         or not turn_id
         or state.ended
         or responding_agent is None
+        or responding_agent is Agent.TRIAGE
         or llm.calls_remaining(turn_id) == 0
     ):
         return canonical_reply

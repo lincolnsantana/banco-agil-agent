@@ -89,14 +89,14 @@ extração de par de moedas. O runner mede por versão de prompt: acerto de
 roteamento/extração, chamadas LLM (zero no caminho determinístico), latência
 por caso (teto de 1.000 ms) e tamanho do system message por especialista.
 
-O `BASELINE` fixa os valores da versão atual (`global@1.3.0` + especialistas
-`1.2.0`). Ao mudar `PROMPTS.md`, atualize o baseline no mesmo commit e registre
+O `BASELINE` fixa os valores da versão atual (`global@1.3.0`, triagem `1.2.0` e
+especialistas `1.3.0`). Ao mudar `PROMPTS.md`, atualize o baseline no mesmo commit e registre
 abaixo a comparação entre versões (acerto, chamadas, latência média e consumo
 em caracteres).
 
 | Versão de prompt | Dataset | Acerto | Chamadas LLM | Latência média | Consumo máx. |
 | --- | --- | --- | --- | --- | --- |
-| `global@1.3.0` + especialistas `1.2.0` | `1.0.0` | 1.0 (8/8) | 0 | < 1.000 ms/caso | < 2.700 caracteres |
+| `global@1.3.0` + triagem `1.2.0` + especialistas `1.3.0` | `1.0.0` | 1.0 (8/8) | 0 | < 1.000 ms/caso | < 2.700 caracteres |
 
 ## Registro de execução
 

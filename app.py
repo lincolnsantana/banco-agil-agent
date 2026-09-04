@@ -21,16 +21,14 @@ from banco_agil.services.conversation import ConversationService, ConversationTu
 from banco_agil.services.credit import CreditService
 from banco_agil.services.credit_interview import CreditInterviewService
 from banco_agil.services.exchange import ExchangeService
+from banco_agil.services.welcome import (
+    DEFAULT_WELCOME_MESSAGE,
+    generate_welcome_message,
+)
 
 _CONVERSATION_KEY = "conversation"
 _HISTORY_KEY = "history"
 _NOTICE_KEY = "notice"
-
-WELCOME_MESSAGE = (
-    "Olá! Eu sou o assistente virtual do Banco Ágil. Posso consultar seu limite "
-    "de crédito, solicitar aumento, conduzir uma entrevista de crédito e consultar "
-    "cotações de moedas. Para começar, conte como posso ajudar."
-)
 
 _CPF_FORMATTED_PATTERN = re.compile(r"\d{3}\.\d{3}\.\d{3}-\d{2}")
 _CPF_PLAIN_PATTERN = re.compile(r"\b\d{11}\b")
@@ -50,20 +48,26 @@ class ConversationServiceLike(Protocol):
         ...
 
 
-def init_session(session: MutableMapping[str, object]) -> None:
+def init_session(
+    session: MutableMapping[str, object],
+    welcome_message: str = DEFAULT_WELCOME_MESSAGE,
+) -> None:
     """Garante conversa, historico e aviso sem descartar o existente."""
     if _CONVERSATION_KEY not in session:
         session[_CONVERSATION_KEY] = ConversationState()
     if _HISTORY_KEY not in session:
-        session[_HISTORY_KEY] = [AIMessage(content=WELCOME_MESSAGE)]
+        session[_HISTORY_KEY] = [AIMessage(content=welcome_message)]
     if _NOTICE_KEY not in session:
         session[_NOTICE_KEY] = None
 
 
-def reset_conversation(session: MutableMapping[str, object]) -> None:
+def reset_conversation(
+    session: MutableMapping[str, object],
+    welcome_message: str = DEFAULT_WELCOME_MESSAGE,
+) -> None:
     """Reinicia a conversa em memoria sem apagar nenhuma persistencia."""
     session[_CONVERSATION_KEY] = ConversationState()
-    session[_HISTORY_KEY] = [AIMessage(content=WELCOME_MESSAGE)]
+    session[_HISTORY_KEY] = [AIMessage(content=welcome_message)]
     session[_NOTICE_KEY] = None
 
 
@@ -93,10 +97,16 @@ def history_for_display(history: Sequence[BaseMessage]) -> list[tuple[str, str]]
 def build_conversation_service(settings: Settings) -> ConversationService:
     """Compõe o serviço com repositórios, câmbio e LLM opcional.
 
-    O LLM é usado somente quando há chave configurada; sem chave, os fluxos
-    determinísticos continuam funcionando e a intenção ambígua pede
-    esclarecimento.
+    O LLM é usado somente quando há chave configurada; sem chave, a apresentação
+    e as respostas dos especialistas usam seus textos canônicos.
     """
+    return _build_conversation_service(settings, _optional_llm(settings))
+
+
+def _build_conversation_service(
+    settings: Settings,
+    llm: GroqStructuredLlm | None,
+) -> ConversationService:
     client_repository = ClientCsvRepository(settings.data_dir / "clientes.csv")
     dependencies = GraphDependencies(
         authentication=AuthenticationService(client_repository),
@@ -108,7 +118,7 @@ def build_conversation_service(settings: Settings) -> ConversationService:
         ),
         credit_interview=CreditInterviewService(client_repository),
         exchange=ExchangeService(AwesomeApiClient(settings.awesomeapi_base_url)),
-        llm=_optional_llm(settings),
+        llm=llm,
     )
     return ConversationService(build_graph(dependencies))
 
@@ -118,7 +128,7 @@ def llm_status_message(settings: Settings) -> str:
     api_key = settings.groq_api_key
     if api_key is not None and api_key.get_secret_value().strip():
         model = settings.groq_model
-        return f"Groq ativo para humanização e intenções ambíguas — modelo {model}."
+        return f"Groq ativo nas boas-vindas e nos especialistas — modelo {model}."
     return (
         "Modo determinístico: Groq inativo. Configure "
         "BANCO_AGIL_GROQ_API_KEY no arquivo .env e reinicie a aplicação."
@@ -179,8 +189,10 @@ def _optional_llm(settings: Settings) -> GroqStructuredLlm | None:
 
 
 @st.cache_resource
-def _get_service() -> ConversationService:
-    return build_conversation_service(Settings())
+def _get_runtime() -> tuple[ConversationService, GroqStructuredLlm | None]:
+    settings = Settings()
+    llm = _optional_llm(settings)
+    return _build_conversation_service(settings, llm), llm
 
 
 def main() -> None:
@@ -190,8 +202,11 @@ def main() -> None:
     settings = Settings()
     st.caption(llm_status_message(settings))
     session = cast(MutableMapping[str, object], st.session_state)
-    init_session(session)
-    service = _get_service()
+    service, llm = _get_runtime()
+    if _HISTORY_KEY not in session:
+        init_session(session, generate_welcome_message(llm))
+    else:
+        init_session(session)
 
     state = cast(ConversationState, session[_CONVERSATION_KEY])
     history = cast(Sequence[BaseMessage], session[_HISTORY_KEY])
@@ -209,7 +224,7 @@ def main() -> None:
         end_conversation(session, service)
         st.rerun()
     if restart_clicked.button("Reiniciar atendimento", use_container_width=True):
-        reset_conversation(session)
+        reset_conversation(session, generate_welcome_message(llm))
         st.rerun()
 
     user_input = st.chat_input("Digite sua mensagem")

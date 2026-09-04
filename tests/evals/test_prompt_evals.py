@@ -157,7 +157,7 @@ def _measure_latency_ms(action: Callable[[], object]) -> float:
 def _run_intent_case(case: IntentCase) -> tuple[ConversationState, float]:
     state = ConversationState(authenticated_client=_client())
     started = perf_counter()
-    handle_triage(state, case.text, NeverCalledService(), llm=None, turn_id="")
+    handle_triage(state, case.text, NeverCalledService())
     return state, (perf_counter() - started) * 1000
 
 

@@ -211,7 +211,7 @@ def test_audit_storage_and_logs_contain_no_pii(
     assert FAKE_BIRTH_DATE not in caplog.text
 
 
-def test_metrics_distinguish_zero_and_bounded_llm_calls() -> None:
+def test_metrics_distinguish_zero_and_one_specialist_llm_call() -> None:
     metrics = InMemoryLlmMetricsRecorder()
     service = _service(None)
     state = ConversationState(authenticated_client=_client())
@@ -221,9 +221,8 @@ def test_metrics_distinguish_zero_and_bounded_llm_calls() -> None:
 
     llm = MetricsRecordingLlm(
         {
-            "intent": "credit_limit",
             "reply": (
-                "Com certeza! Seu limite atual é [DADO_1]. Posso ajudar em algo mais?"
+                "Claro! Qual limite total você gostaria de ter? Por exemplo: [DADO_1]."
             ),
         },
         metrics,
@@ -233,24 +232,17 @@ def test_metrics_distinguish_zero_and_bounded_llm_calls() -> None:
     turn = humanized_service.handle_turn(
         humanized_state, (), "quero aumentar meu limite"
     )
-    assert turn.reply.startswith("Com certeza!")
-    assert len(metrics.calls) == 2
-    assert [call.prompt_version for call in metrics.calls] == [
-        "global@1.3.0+triage@1.2.0",
-        "global@1.3.0+credit@1.2.0",
-    ]
+    assert turn.reply.startswith("Claro!")
+    assert len(metrics.calls) == 1
+    assert metrics.calls[0].prompt_version == "global@1.3.0+credit@1.3.0"
     assert all(call.model == "fake-model" for call in metrics.calls)
 
     ambiguous_metrics = InMemoryLlmMetricsRecorder()
-    ambiguous_llm = MetricsRecordingLlm({"intent": "other"}, ambiguous_metrics)
+    ambiguous_llm = MetricsRecordingLlm({"reply": "Não usada."}, ambiguous_metrics)
     ambiguous_service = _service(None, ambiguous_llm)
     ambiguous_state = ConversationState(authenticated_client=_client())
     ambiguous_service.handle_turn(ambiguous_state, (), "preciso resolver outra coisa")
-    assert len(ambiguous_metrics.calls) == 2
-    assert all(
-        call.prompt_version == "global@1.3.0+triage@1.2.0"
-        for call in ambiguous_metrics.calls
-    )
+    assert ambiguous_metrics.calls == []
 
 
 def test_audit_failure_is_non_fatal(tmp_path: Path) -> None:

@@ -13,7 +13,6 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage  # noqa
 
 import app  # noqa: E402
 from app import (  # noqa: E402
-    WELCOME_MESSAGE,
     build_conversation_service,
     end_conversation,
     history_for_display,
@@ -27,6 +26,7 @@ from banco_agil.agents.state import ConversationState
 from banco_agil.config import Settings
 from banco_agil.domain.models import Client
 from banco_agil.services.conversation import ConversationTurn
+from banco_agil.services.welcome import DEFAULT_WELCOME_MESSAGE
 
 
 @dataclass
@@ -64,7 +64,7 @@ def test_init_session_preserves_existing_conversation() -> None:
     history = cast(list[BaseMessage], session["history"])
     assert len(history) == 1
     assert isinstance(history[0], AIMessage)
-    assert history[0].content == WELCOME_MESSAGE
+    assert history[0].content == DEFAULT_WELCOME_MESSAGE
     assert session["notice"] is None
 
 
@@ -81,9 +81,18 @@ def test_reset_conversation_keeps_persistence_files(tmp_path: Path) -> None:
     history = cast(list[BaseMessage], session["history"])
     assert len(history) == 1
     assert isinstance(history[0], AIMessage)
-    assert history[0].content == WELCOME_MESSAGE
+    assert history[0].content == DEFAULT_WELCOME_MESSAGE
     assert session["notice"] is None
     assert persistence.read_text(encoding="utf-8") == "conteudo"
+
+
+def test_session_uses_generated_welcome_message() -> None:
+    session: dict[str, object] = {}
+
+    init_session(session, "Boas-vindas geradas pelo modelo.")
+
+    history = cast(list[BaseMessage], session["history"])
+    assert history[0].content == "Boas-vindas geradas pelo modelo."
 
 
 def test_submit_forwards_exact_text_and_updates_session() -> None:
@@ -229,6 +238,8 @@ def test_llm_status_reports_configured_groq_model() -> None:
     message = llm_status_message(settings)
 
     assert "Groq ativo" in message
+    assert "boas-vindas" in message
+    assert "especialistas" in message
     assert "test-model" in message
     assert "test-key" not in message
 

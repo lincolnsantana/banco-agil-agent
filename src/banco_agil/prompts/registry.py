@@ -13,6 +13,7 @@ from banco_agil.prompts.templates import (
     EXCHANGE_PROMPT,
     GLOBAL_PROMPT,
     TRIAGE_PROMPT,
+    WELCOME_PROMPT,
 )
 from banco_agil.tools.banking import (
     authenticate_client,
@@ -25,7 +26,8 @@ from banco_agil.tools.banking import (
 
 _VARIABLE_PATTERN = re.compile(r"{{\s*([a-z_]+)\s*}}")
 _GLOBAL_PROMPT_VERSION = "1.3.0"
-_SPECIALIST_PROMPT_VERSION = "1.2.0"
+_TRIAGE_PROMPT_VERSION = "1.2.0"
+_SPECIALIST_PROMPT_VERSION = "1.3.0"
 
 
 @dataclass(frozen=True)
@@ -84,6 +86,15 @@ class PromptRegistry:
         return self._agent_tools[agent]
 
 
+WELCOME_PROMPT_DEFINITION = PromptDefinition(
+    prompt_id="welcome",
+    version="1.0.0",
+    template=WELCOME_PROMPT,
+    variables=frozenset(),
+    character_limit=800,
+)
+
+
 PROMPT_REGISTRY = PromptRegistry(
     global_prompt=PromptDefinition(
         prompt_id="global",
@@ -95,7 +106,7 @@ PROMPT_REGISTRY = PromptRegistry(
     specialist_prompts={
         Agent.TRIAGE: PromptDefinition(
             prompt_id="triage",
-            version=_SPECIALIST_PROMPT_VERSION,
+            version=_TRIAGE_PROMPT_VERSION,
             template=TRIAGE_PROMPT,
             variables=frozenset({"state"}),
             character_limit=1_000,

@@ -209,10 +209,11 @@ def test_triage_routes_to_credit_and_returns_final_reply_in_same_turn(
     assert isinstance(turn.history[1], AIMessage)
 
 
-def test_clear_request_uses_two_calls_and_is_rewritten(client: Client) -> None:
+def test_clear_request_uses_one_specialist_call_and_is_rewritten(
+    client: Client,
+) -> None:
     llm = RecordingLlm(
         {
-            "intent": "credit_limit",
             "reply": (
                 "Com certeza! Seu limite atual é [DADO_1]. Posso ajudar em algo mais?"
             ),
@@ -225,9 +226,9 @@ def test_clear_request_uses_two_calls_and_is_rewritten(client: Client) -> None:
 
     assert turn.reply.startswith("Com certeza!")
     assert "2.500,00" in turn.reply
-    assert len(llm.calls) == 2
+    assert len(llm.calls) == 1
     assert "2.500,00" not in str(llm.calls)
-    assert "Escopo: consultar limite" in str(llm.calls[1][0].content)
+    assert "Escopo: consultar limite" in str(llm.calls[0][0].content)
 
 
 def test_triage_routes_to_exchange_in_same_turn(client: Client) -> None:
@@ -304,13 +305,13 @@ def test_graph_step_guard_returns_controlled_reply(client: Client) -> None:
 def test_ambiguous_intent_falls_back_to_canonical_clarification(
     client: Client,
 ) -> None:
-    llm = RecordingLlm({"intent": "other"})
+    llm = RecordingLlm({"reply": "Não deveria ser usada."})
     harness = build_harness(client, llm)
     state = ConversationState(authenticated_client=client)
 
     turn = harness.service.handle_turn(state, (), "preciso resolver outra coisa")
 
-    assert len(llm.calls) == 2
+    assert llm.calls == []
     assert state.active_agent is Agent.TRIAGE
     assert "limite" in turn.reply.casefold()
     assert "cotação" in turn.reply.casefold()
@@ -319,7 +320,9 @@ def test_ambiguous_intent_falls_back_to_canonical_clarification(
 def test_llm_receives_at_most_six_sanitized_conversation_messages(
     client: Client,
 ) -> None:
-    llm = RecordingLlm({"intent": "other"})
+    llm = RecordingLlm(
+        {"reply": "Seu limite atual é [DADO_1]. Posso ajudar em algo mais?"}
+    )
     harness = build_harness(client, llm)
     state = ConversationState(authenticated_client=client)
     history: tuple[BaseMessage, ...] = (
@@ -331,7 +334,7 @@ def test_llm_receives_at_most_six_sanitized_conversation_messages(
         AIMessage(content="Pode explicar melhor?"),
     )
 
-    harness.service.handle_turn(state, history, "preciso resolver outra coisa")
+    harness.service.handle_turn(state, history, "qual é meu limite?")
 
     sent_messages = llm.calls[0]
     assert len(sent_messages[1:]) <= 6
