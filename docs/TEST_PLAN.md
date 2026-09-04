@@ -14,23 +14,31 @@ Cobertura automatizada correspondente em `tests/e2e/test_journeys.py`.
 ## CT00 — Abertura da interface
 
 1. Inicie `streamlit run app.py`.
-2. Confirme o cabeçalho simples `🏦 Banco Ágil`, a tipografia Inter e o fundo
+2. Na tela inicial, confirme o título centralizado, a tipografia Inter e os quatro
+   atalhos (Visualizar limite, Solicitar aumento de crédito, Entrevista para
+   atualizar crédito, Cotação de moedas). Clique em um deles e verifique que o
+   texto entra no chat como mensagem do cliente, com transição animada; o campo
+   central também aceita texto livre.
+3. Confirme o cabeçalho simples `🏦 Banco Ágil`, a tipografia Inter e o fundo
    branco no tema claro, sem sobrepor o header nativo do Streamlit.
-3. Observe a primeira mensagem antes de digitar.
-4. Envie uma mensagem e confira os balões internos azul/ardósia com texto branco,
+4. Observe a primeira mensagem antes de digitar.
+5. Envie uma mensagem e confira os balões internos azul/ardósia com texto branco,
    sem títulos internos, e avatares `🧑`/`🏦` alinhados à primeira linha do texto,
    no desktop e no celular.
-5. Confirme que o menu oferece os temas claro e escuro. Alterne para escuro e
+6. Confirme que o menu oferece os temas claro e escuro. Alterne para escuro e
    verifique que página, header nativo, balões, texto e campo de mensagem ficam
    escuros e legíveis.
-6. Clique no campo de mensagem e confirme o contorno azul, sem borda vermelha.
-7. Envie uma mensagem e confira `🏦` com três pontos animados enquanto aguarda,
+7. Clique no campo de mensagem e confirme o contorno azul, sem borda vermelha.
+8. Envie uma mensagem e confira `🏦` com três pontos animados enquanto aguarda,
    sem círculo de carregamento ou texto `Digitando...`.
+9. Clique em **Novo atendimento** e confirme o retorno à tela inicial.
 
 Resultado esperado: o assistente se apresenta, informa que atende limite,
 aumento, entrevista de crédito e câmbio, explica que a autenticação vem primeiro
-e já solicita o CPF. Não há botões: tudo acontece na conversa. Barra, balões,
-avatares e campo de mensagem permanecem legíveis nos dois tamanhos de tela.
+e já solicita o CPF. Os botões existem apenas na tela inicial, como atalhos que
+viram mensagem do cliente; dentro do chat tudo acontece na conversa, com o botão
+**Novo atendimento** voltando para a tela inicial. Barra, balões, avatares e campo
+de mensagem permanecem legíveis nos dois tamanhos de tela.
 
 ## CT01 — Autenticação e consulta de limite
 

@@ -29,7 +29,8 @@ UI (app.py) -> ConversationService -> Graph (LangGraph) -> Tools -> Services
 Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
 ```
 
-- **UI** (`app.py`): boas-vindas com os serviços disponíveis e pedido imediato
+- **UI** (`app.py`): tela inicial com campo central e quatro atalhos, transição
+  animada para o chat, boas-vindas com os serviços disponíveis e pedido imediato
   de CPF, sessão e histórico
   entre reruns, máscara de CPF/nascimento na exibição, erros recuperáveis
   genéricos e ações Encerrar/Reiniciar alinhadas. Sem regra de negócio.
@@ -75,10 +76,14 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
 - Encerramento (`encerrar`, `sair`, `finalizar`…) prioritário em qualquer nó.
 - Pergunta sobre o atendimento (`o que você pode fazer?`) respondida em
   qualquer nó, exceto dentro da entrevista.
-- UI Streamlit sem botões: cada solicitação pergunta se deseja continuar ou
-  encerrar; após o encerramento, informar o CPF inicia outro atendimento.
-  Sessão persistente, mascaramento de dados, tipografia Inter, cabeçalho simples,
-  avatares por emoji, balões responsivos e temas claro/escuro consistentes.
+- UI Streamlit em duas telas: a inicial centraliza o campo de mensagem e oferece
+  quatro atalhos (visualizar limite, solicitar aumento de crédito, entrevista
+  para atualizar crédito e cotação de moedas) que viram mensagem do cliente; uma
+  transição animada abre o chat. No chat, cada solicitação pergunta se deseja
+  continuar ou encerrar; após o encerramento, informar o CPF inicia outro
+  atendimento. Sessão persistente, mascaramento de dados, tipografia Inter,
+  cabeçalho simples, botão de novo atendimento, avatares por emoji, balões
+  responsivos e temas claro/escuro consistentes.
 - Auditoria técnica consultável por sessão + métricas por chamada de LLM.
 - Mais de 200 testes (unitários, integração e E2E) + `docs/TEST_PLAN.md` de
   homologação.
@@ -152,7 +157,9 @@ decisões. A triagem usa parser determinístico primeiro e só classifica via Gr
 quando a intenção continua ambígua; cada turno especialista faz no máximo uma
 chamada de redação.
 
-Roteiro na UI: informe o CPF → informe o nascimento → `qual é meu limite?`
+Roteiro na UI: na tela inicial, clique em **Visualizar limite** (ou digite o
+pedido no campo central) → informe o CPF → informe o nascimento →
+`qual é meu limite?`
 (`R$ 2.500,00`) → `quero aumentar meu limite` → `4000` → responda `encerrar`
 para finalizar; informar o CPF inicia outro atendimento. Demonstração completa
 em `docs/DEMO.md`; homologação em `docs/TEST_PLAN.md`.
