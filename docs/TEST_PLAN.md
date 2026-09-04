@@ -80,7 +80,8 @@ que o limite cadastrado foi atualizado, seguida de
 1. Autentique-se.
 2. Envie `quero aumentar` e depois `15000` (acima do teto de 10.000 do score 700).
 3. Confirme a entrevista com `sim`.
-4. Responda `20000`, `formal`, `1000`, `0`, `não`.
+4. Responda `20000`, `formal`, `1000`, `0`, `não` — o `não` final responde a
+   pergunta de dívidas e não pode ser lido como desistência.
 
 Resultado esperado: rejeição com oferta de entrevista (sem promessa de aprovação);
 uma pergunta por vez; após a última resposta, score atualizado para 1000 e nova
@@ -99,13 +100,20 @@ nenhum valor inventado e sem detalhe técnico.
 
 ## CT08 — Dúvidas de limite/score e histórico
 
-1. Envie `como posso aumentar meu limite?` ou `como aumentar meu score?`.
-2. Confirme com `quero`, `vamos fazer` ou outra afirmativa natural.
+1. Envie `como aumentar meu score?` (ou `quero atualizar meu score`).
+2. Envie `como posso aumentar meu limite?` num atendimento novo e confirme com
+   `quero`, `vamos fazer` ou outra afirmativa natural.
 3. Continue enviando mensagens até ultrapassar seis itens no chat.
+4. Num atendimento novo, peça a entrevista, responda a renda e depois envie
+   `não quero mais`.
 
-Resultado esperado: o bot orienta a entrevista sem prometer aprovação, inicia
-pela renda após a confirmação e mantém todas as mensagens visíveis na aba. O
-contexto interno enviado ao Groq continua limitado às seis mais recentes.
+Resultado esperado: no passo 1 o bot **não** pergunta se você quer a entrevista
+— ele explica os cinco itens, diz que não garante aprovação, avisa que você pode
+parar quando quiser e já pergunta a renda na mesma mensagem. No passo 2, como o
+pedido é de limite e não de score, a confirmação continua vindo antes. Todas as
+mensagens permanecem visíveis na aba e o contexto enviado ao Groq segue limitado
+às seis mais recentes. No passo 4, o atendimento encerra a entrevista e informa
+que nada foi guardado.
 
 ## CT05 — Três falhas e encerramento
 

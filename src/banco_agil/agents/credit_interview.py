@@ -6,7 +6,7 @@ from banco_agil.agents._shared import (
     normalize_short_answer,
     parse_confirmation,
 )
-from banco_agil.agents.state import ConversationState
+from banco_agil.agents.state import ConversationState, CreditInterviewDraft
 from banco_agil.domain.enums import Agent, Intent
 from banco_agil.domain.exceptions import DomainError, RepositoryError
 from banco_agil.domain.models import ScoreUpdateResult
@@ -15,6 +15,20 @@ from banco_agil.services.credit_interview import (
     InterviewField,
 )
 from banco_agil.tools.banking import update_credit_score
+
+_INTERVIEW_OPENING = (
+    "Claro, posso cuidar disso com você agora. A entrevista de crédito é uma "
+    "conversa rápida de cinco perguntas: renda mensal, tipo de emprego, "
+    "despesas fixas, dependentes e dívidas ativas. Com essas respostas eu "
+    "recalculo seu score e atualizo seu cadastro — não posso garantir "
+    "aprovação, e você pode parar quando quiser, sem que nada fique guardado. "
+    "Vamos pela primeira: qual é sua renda mensal? Informe apenas o valor."
+)
+
+_INTERVIEW_ABANDONED = (
+    "Tudo bem, encerrei a entrevista e não guardei nada do que você contou. "
+    "Posso ajudar com outro serviço ou encerrar o atendimento."
+)
 
 _QUESTIONS = {
     InterviewField.MONTHLY_INCOME: "Qual é sua renda mensal? Informe apenas o valor.",
@@ -46,6 +60,10 @@ def handle_credit_interview(
         consent = _explicit_interview_consent(user_text)
         if consent is None and not _looks_like_interview_request(user_text):
             consent = parse_confirmation(user_text)
+        if consent is None and state.intent is Intent.CREDIT_INTERVIEW:
+            # A triagem ja reconheceu o pedido; nos turnos retomados apos a
+            # autenticacao o texto aqui e a data de nascimento, nao o pedido.
+            consent = True
         if consent is None:
             return "Quer realizar a entrevista de crédito agora?"
         try:
@@ -58,9 +76,17 @@ def handle_credit_interview(
             state.intent = Intent.UNKNOWN
             state.active_agent = Agent.TRIAGE
             return "Tudo bem. Posso ajudar com outro serviço ou encerrar o atendimento."
-        return _question(progress.next_field)
+        return _INTERVIEW_OPENING
 
     current_field = _current_field(state)
+    if _abandons_interview(user_text):
+        # Consentimento informado precisa ser revogavel a qualquer momento.
+        state.interview_draft = CreditInterviewDraft()
+        state.requested_limit = None
+        state.credit_reanalysis_pending = False
+        state.intent = Intent.UNKNOWN
+        state.active_agent = Agent.TRIAGE
+        return _INTERVIEW_ABANDONED
     try:
         progress = service.collect_answer(state, user_text)
     except DomainError:
@@ -149,6 +175,37 @@ def _explicit_interview_consent(user_text: str) -> bool | None:
     if "quero" in words and not (words & _INTERVIEW_INFORMATIONAL_MARKERS):
         return True
     return None
+
+
+_ABANDON_PHRASES = (
+    "nao quero mais",
+    "nao quero fazer",
+    "nao quero continuar",
+    "nao quero responder",
+    "nao quero seguir",
+    "prefiro nao",
+    "deixa pra la",
+    "deixa para la",
+    "quero parar",
+    "vamos parar",
+    "pode parar",
+    "para a entrevista",
+    "parar a entrevista",
+    "cancela a entrevista",
+    "cancelar a entrevista",
+    "desisto",
+    "desistir",
+)
+
+
+def _abandons_interview(user_text: str) -> bool:
+    """Detecta desistencia no meio da coleta, sem confundir com resposta.
+
+    Um "nao" isolado responde a pergunta de dividas ativas, entao so frases
+    explicitas de recusa contam aqui.
+    """
+    normalized = normalize_short_answer(user_text)
+    return any(phrase in normalized for phrase in _ABANDON_PHRASES)
 
 
 def _looks_like_interview_request(user_text: str) -> bool:

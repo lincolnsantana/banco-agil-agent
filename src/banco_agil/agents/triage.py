@@ -90,7 +90,13 @@ def _handle_howto(state: ConversationState, topic: Intent) -> str:
         state.intent = Intent.CREDIT_LIMIT
         state.active_agent = Agent.CREDIT
         return "Certo. Vou prosseguir com sua solicitação."
-    if topic in {Intent.CREDIT_INTERVIEW, Intent.LIMIT_INCREASE}:
+    if topic is Intent.CREDIT_INTERVIEW:
+        # Perguntar como melhorar o score ja e pedir a entrevista: o
+        # especialista abre explicando e faz a primeira pergunta no mesmo turno.
+        state.intent = Intent.CREDIT_INTERVIEW
+        state.active_agent = Agent.CREDIT_INTERVIEW
+        return "Certo. Vou prosseguir com sua solicitação."
+    if topic is Intent.LIMIT_INCREASE:
         state.pending_flow = Intent.CREDIT_INTERVIEW
         state.intent = Intent.UNKNOWN
         state.active_agent = Agent.TRIAGE

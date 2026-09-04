@@ -28,6 +28,14 @@ EXPECTED_TOOLS = {
 }
 
 
+_EXPECTED_PROMPT_VERSIONS = {
+    Agent.TRIAGE: "1.6.0",
+    Agent.CREDIT: "1.4.0",
+    Agent.CREDIT_INTERVIEW: "1.5.0",
+    Agent.EXCHANGE: "1.5.0",
+}
+
+
 def test_registry_uses_documented_ids_versions_variables_and_limits() -> None:
     assert PROMPT_REGISTRY.global_prompt.prompt_id == "global"
     assert PROMPT_REGISTRY.global_prompt.version == "1.4.0"
@@ -42,13 +50,7 @@ def test_registry_uses_documented_ids_versions_variables_and_limits() -> None:
     for agent in Agent:
         definition = PROMPT_REGISTRY.for_agent(agent)
         assert definition.prompt_id == agent.value
-        if agent is Agent.TRIAGE:
-            expected_version = "1.6.0"
-        elif agent is Agent.EXCHANGE:
-            expected_version = "1.5.0"
-        else:
-            expected_version = "1.4.0"
-        assert definition.version == expected_version
+        assert definition.version == _EXPECTED_PROMPT_VERSIONS[agent]
         assert definition.character_limit == 1_000
         assert definition.variables == frozenset({"state"})
 
@@ -79,14 +81,8 @@ def test_rendering_produces_one_bounded_system_message_for_active_agent(
     specialist = PROMPT_REGISTRY.for_agent(agent)
 
     assert isinstance(rendered.system_message, SystemMessage)
-    if agent is Agent.TRIAGE:
-        specialist_version = "1.6.0"
-    elif agent is Agent.EXCHANGE:
-        specialist_version = "1.5.0"
-    else:
-        specialist_version = "1.4.0"
     assert rendered.prompt_version == (
-        f"global@1.4.0+{agent.value}@{specialist_version}"
+        f"global@1.4.0+{agent.value}@{_EXPECTED_PROMPT_VERSIONS[agent]}"
     )
     assert "{{" not in str(rendered.system_message.content)
     assert len(PROMPT_REGISTRY.global_prompt.template) <= 1_200

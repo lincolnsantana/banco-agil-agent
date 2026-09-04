@@ -250,6 +250,14 @@ def _increase_result(status: CreditRequestStatus) -> LimitIncreaseResult:
     )
 
 
+_EXPECTED_PROMPT_VERSIONS = {
+    Agent.TRIAGE: "1.6.0",
+    Agent.CREDIT: "1.4.0",
+    Agent.CREDIT_INTERVIEW: "1.5.0",
+    Agent.EXCHANGE: "1.5.0",
+}
+
+
 @pytest.mark.parametrize(
     "agent", [Agent.CREDIT, Agent.CREDIT_INTERVIEW, Agent.EXCHANGE]
 )
@@ -272,7 +280,7 @@ def test_humanization_rewrites_reply_without_exposing_data(
 
     assert reply == "Claro! Resposta canônica com R$ 2.500,00."
     _, messages, version = llm.calls[0]
-    expected_version = "1.5.0" if agent is Agent.EXCHANGE else "1.4.0"
+    expected_version = _EXPECTED_PROMPT_VERSIONS[agent]
     assert version == f"global@1.4.0+{agent.value}@{expected_version}"
     assert "01234567890" not in str(messages)
     assert "2.500,00" not in str(messages)
@@ -678,11 +686,6 @@ def test_triage_classifies_ambiguous_help_with_llm(client: Client) -> None:
             "entrevista de crédito",
         ),
         (
-            "como aumentar meu score?",
-            Intent.CREDIT_INTERVIEW,
-            "entrevista de crédito",
-        ),
-        (
             "é possível aumentar meu limite?",
             Intent.CREDIT_INTERVIEW,
             "entrevista de crédito",
@@ -774,15 +777,35 @@ def test_howto_unclear_keeps_pending_and_repeats(client: Client) -> None:
     assert "Quer que eu faça isso agora?" in reply
 
 
-def test_howto_interview_routes_with_consent_question(client: Client) -> None:
+@pytest.mark.parametrize(
+    "user_text",
+    (
+        "como aumentar meu score?",
+        "como funciona a entrevista de crédito?",
+        "como melhorar minha pontuação?",
+    ),
+)
+def test_howto_about_score_starts_the_interview(client: Client, user_text: str) -> None:
+    state = ConversationState(authenticated_client=client)
+
+    handle_triage(state, user_text, FakeAuthenticationService(client))
+
+    # Perguntar como melhorar o score ja e pedir a entrevista.
+    assert state.intent is Intent.CREDIT_INTERVIEW
+    assert state.active_agent is Agent.CREDIT_INTERVIEW
+    assert state.pending_flow is None
+
+
+def test_howto_about_limit_still_confirms_before_the_interview(
+    client: Client,
+) -> None:
     state = ConversationState(authenticated_client=client)
 
     reply = handle_triage(
-        state,
-        "como funciona a entrevista de crédito?",
-        FakeAuthenticationService(client),
+        state, "como aumento meu limite?", FakeAuthenticationService(client)
     )
 
+    # Pedir aumento de limite nao e pedir entrevista: aqui a confirmacao fica.
     assert "5 perguntas" in reply
     assert state.pending_flow is Intent.CREDIT_INTERVIEW
     assert state.active_agent is Agent.TRIAGE
@@ -968,6 +991,111 @@ def test_credit_repository_failure_returns_controlled_reply(client: Client) -> N
 
     assert "tente novamente" in reply.casefold()
     assert "technical" not in reply
+
+
+def test_interview_opens_explaining_before_the_first_question(
+    client: Client,
+) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT_INTERVIEW,
+        intent=Intent.CREDIT_INTERVIEW,
+        requested_limit=Decimal("4000.00"),
+    )
+    service = FakeInterviewService(
+        InterviewProgress(next_field=InterviewField.MONTHLY_INCOME)
+    )
+
+    reply = handle_credit_interview(state, "quero aumentar meu score", service)
+
+    lowered = reply.casefold()
+    # Explica o que sera perguntado, o que acontece com os dados e ja comeca.
+    assert "cinco perguntas" in lowered
+    assert "renda mensal" in lowered
+    assert "dívidas ativas" in lowered
+    assert "parar quando quiser" in lowered
+    assert "garantir aprovação" in lowered
+    assert "quer realizar a entrevista" not in lowered
+    assert service.starts == [True]
+
+
+def test_interview_starts_when_triage_already_recognized_the_request(
+    client: Client,
+) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT_INTERVIEW,
+        intent=Intent.CREDIT_INTERVIEW,
+        requested_limit=Decimal("4000.00"),
+    )
+    service = FakeInterviewService(
+        InterviewProgress(next_field=InterviewField.MONTHLY_INCOME)
+    )
+
+    # Turno retomado apos autenticar: o texto aqui e a data, nao o pedido.
+    reply = handle_credit_interview(state, "20/05/1990", service)
+
+    assert "cinco perguntas" in reply.casefold()
+    assert service.starts == [True]
+
+
+@pytest.mark.parametrize(
+    "refusal",
+    (
+        "não quero mais",
+        "desisto",
+        "prefiro não responder isso",
+        "pode parar a entrevista",
+    ),
+)
+def test_interview_abandoned_midway_discards_everything(
+    client: Client,
+    refusal: str,
+) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT_INTERVIEW,
+        intent=Intent.CREDIT_INTERVIEW,
+        interview_draft=CreditInterviewDraft(
+            consent_given=True, monthly_income=Decimal("5000.00")
+        ),
+        requested_limit=Decimal("4000.00"),
+    )
+    service = FakeInterviewService(
+        InterviewProgress(next_field=InterviewField.EMPLOYMENT_TYPE)
+    )
+
+    reply = handle_credit_interview(state, refusal, service)
+
+    # Consentimento informado tem de ser revogavel a qualquer momento.
+    assert "não guardei nada" in reply
+    assert state.interview_draft.monthly_income is None
+    assert state.interview_draft.consent_given is False
+    assert state.requested_limit is None
+    assert state.active_agent is Agent.TRIAGE
+    assert service.answers == []
+
+
+def test_interview_keeps_plain_no_as_a_valid_debt_answer(client: Client) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT_INTERVIEW,
+        interview_draft=CreditInterviewDraft(
+            consent_given=True,
+            monthly_income=Decimal("5000.00"),
+            employment_type=EmploymentType.FORMAL,
+            monthly_expenses=Decimal("1000.00"),
+        ),
+    )
+    service = FakeInterviewService(
+        InterviewProgress(next_field=InterviewField.ACTIVE_DEBTS)
+    )
+
+    handle_credit_interview(state, "não", service)
+
+    # Um "nao" solto responde dividas ativas e nunca encerra a entrevista.
+    assert service.answers == ["não"]
+    assert state.active_agent is Agent.CREDIT_INTERVIEW
 
 
 def test_interview_requires_consent_before_collecting(client: Client) -> None:
