@@ -1,7 +1,9 @@
 """Interface Streamlit do atendimento bancario conversacional."""
 
 import re
+import time
 from collections.abc import MutableMapping, Sequence
+from dataclasses import dataclass
 from html import escape
 from typing import Protocol, cast
 
@@ -30,8 +32,57 @@ from banco_agil.services.welcome import (
 _CONVERSATION_KEY = "conversation"
 _HISTORY_KEY = "history"
 _NOTICE_KEY = "notice"
+_VIEW_KEY = "view"
+_PENDING_KEY = "pending_message"
+
+LANDING_VIEW = "landing"
+CHAT_VIEW = "chat"
+
+# Tempo da animacao de saida da tela inicial antes de trocar para o chat.
+_TRANSITION_SECONDS = 0.28
+_QUICK_ACTION_COLUMNS = 4
 
 _CHAT_AVATARS = {"assistant": "🏦", "user": "🧑"}
+
+
+@dataclass(frozen=True)
+class QuickAction:
+    """Atalho da tela inicial que vira mensagem do cliente ao ser clicado."""
+
+    key: str
+    label: str
+    icon: str
+    prompt: str
+
+
+# Cada prompt usa termos que a triagem deterministica ja reconhece, para que o
+# atalho chegue ao especialista correto sem depender do LLM.
+_QUICK_ACTIONS = (
+    QuickAction(
+        key="credit_limit",
+        label="Visualizar limite",
+        icon="💳",
+        prompt="Quero visualizar meu limite de crédito.",
+    ),
+    QuickAction(
+        key="limit_increase",
+        label="Aumento de crédito",
+        icon="📈",
+        prompt="Quero solicitar um aumento do meu limite de crédito.",
+    ),
+    QuickAction(
+        key="credit_interview",
+        label="Atualizar score",
+        icon="📝",
+        prompt="Quero fazer a entrevista de crédito para atualizar meu limite.",
+    ),
+    QuickAction(
+        key="exchange_rate",
+        label="Cotação de moedas",
+        icon="💱",
+        prompt="Quero ver a cotação de moedas.",
+    ),
+)
 
 _UI_STYLES = """
 <style>
@@ -49,6 +100,7 @@ _UI_STYLES = """
     --agil-assistant-border: #64748b;
     --agil-user-bubble: #0b5cad;
     --agil-user-border: #60a5fa;
+    --agil-ease: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 html,
@@ -216,6 +268,142 @@ body,
     }
 }
 
+/* ----------------------------- Tela inicial ----------------------------- */
+
+.st-key-landing {
+    min-height: 74vh;
+    justify-content: center;
+    animation: agil-view-in 520ms var(--agil-ease) both;
+}
+
+.landing-hero {
+    margin: 0 auto 1.6rem;
+    text-align: center;
+    animation: agil-rise 560ms var(--agil-ease) both;
+}
+
+.landing-hero__badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.32rem 0.85rem;
+    border: 1px solid var(--agil-border);
+    border-radius: 999px;
+    color: var(--agil-muted);
+    font-size: 0.78rem;
+    font-weight: 500;
+}
+
+.landing-hero__title {
+    margin: 1rem 0 0;
+    color: var(--agil-text);
+    font-size: clamp(1.8rem, 5vw, 2.6rem);
+    font-weight: 600;
+    letter-spacing: -0.04em;
+    line-height: 1.12;
+}
+
+.landing-hero__subtitle {
+    margin: 0.8rem auto 0;
+    max-width: 34rem;
+    color: var(--agil-muted);
+    font-size: 0.95rem;
+    font-weight: 400;
+    line-height: 1.55;
+}
+
+.st-key-landing_input {
+    animation: agil-rise 560ms var(--agil-ease) 90ms both;
+}
+
+.st-key-quick_actions {
+    margin-top: 0.9rem;
+    animation: agil-rise 560ms var(--agil-ease) 170ms both;
+}
+
+.st-key-quick_actions button {
+    min-height: 46px;
+    border: 1px solid var(--agil-border);
+    border-radius: 999px;
+    background: var(--agil-surface-muted);
+    color: var(--agil-text);
+    font-size: 0.86rem;
+    font-weight: 500;
+    transition: transform 160ms ease, border-color 160ms ease,
+        background 160ms ease;
+}
+
+.st-key-quick_actions button:hover {
+    border-color: var(--agil-user-border);
+    background: color-mix(in srgb, var(--agil-accent) 14%, var(--agil-surface));
+    transform: translateY(-1px);
+}
+
+.st-key-quick_actions button:focus-visible {
+    outline: none;
+    border-color: var(--agil-user-bubble);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--agil-accent) 45%, transparent);
+}
+
+.landing-status {
+    margin: 1.4rem 0 0;
+    color: var(--agil-muted);
+    font-size: 0.78rem;
+    text-align: center;
+    animation: agil-rise 560ms var(--agil-ease) 240ms both;
+}
+
+/* ------------------------------- Tela chat ------------------------------ */
+
+.st-key-chat_view {
+    animation: agil-view-in 460ms var(--agil-ease) both;
+}
+
+.st-key-restart_chat button {
+    border: 1px solid var(--agil-border);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--agil-muted);
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.st-key-restart_chat button:hover {
+    border-color: var(--agil-user-border);
+    color: var(--agil-text);
+}
+
+@keyframes agil-view-in {
+    from {
+        opacity: 0;
+        transform: translateY(16px);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes agil-rise {
+    from {
+        opacity: 0;
+        transform: translateY(18px);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes agil-view-out {
+    to {
+        opacity: 0;
+        transform: translateY(-14px) scale(0.985);
+    }
+}
+
 @media (max-width: 640px) {
     [data-testid="stMainBlockContainer"] {
         padding: 0.75rem 0.8rem 6.5rem;
@@ -234,15 +422,58 @@ body,
         width: 34px;
         height: 34px;
     }
+
+    .st-key-landing {
+        min-height: 68vh;
+    }
+
+    .st-key-quick_actions button {
+        font-size: 0.8rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .st-key-landing,
+    .st-key-landing_input,
+    .st-key-quick_actions,
+    .st-key-chat_view,
+    .landing-hero,
+    .landing-status,
+    .typing-indicator__dot {
+        animation: none !important;
+    }
 }
 </style>
+"""
+
+# Injetado apos a tela inicial ja estar na pagina: reaproveita o elemento
+# existente para animar a saida sem redesenhar os widgets.
+_LANDING_EXIT_STYLE = """
+<style>
+.st-key-landing {
+    animation: agil-view-out 260ms cubic-bezier(0.4, 0, 1, 1) forwards !important;
+}
+</style>
+"""
+
+_LANDING_HERO = """
+<section class="landing-hero">
+    <span class="landing-hero__badge">🏦 Banco Ágil</span>
+    <h1 class="landing-hero__title">Como posso ajudar você hoje?</h1>
+    <p class="landing-hero__subtitle">
+        Consulte seu limite, solicite aumento de crédito, faça a entrevista de
+        atualização e acompanhe as cotações de moedas.
+    </p>
+</section>
 """
 
 _PAGE_HEADING = """
 <header class="page-heading">
     <h1 class="page-heading__title">🏦 Banco Ágil: Atendimento Digital</h1>
-    <p class="page-heading__subtitle">Cuide do seu crédito de forma simples: consulte seu limite, peça aumento, faça sua análise <br> e acompanhe cotações de moedas.
-</p>
+    <p class="page-heading__subtitle">
+        Cuide do seu crédito de forma simples: consulte seu limite, peça
+        aumento, faça sua análise e acompanhe cotações de moedas.
+    </p>
 </header>
 """
 
@@ -280,13 +511,15 @@ def init_session(
     session: MutableMapping[str, object],
     welcome_message: str = DEFAULT_WELCOME_MESSAGE,
 ) -> None:
-    """Garante conversa, historico e aviso sem descartar o existente."""
+    """Garante conversa, historico, aviso e tela sem descartar o existente."""
     if _CONVERSATION_KEY not in session:
         session[_CONVERSATION_KEY] = ConversationState()
     if _HISTORY_KEY not in session:
         session[_HISTORY_KEY] = [AIMessage(content=welcome_message)]
     if _NOTICE_KEY not in session:
         session[_NOTICE_KEY] = None
+    if _VIEW_KEY not in session:
+        session[_VIEW_KEY] = LANDING_VIEW
 
 
 def reset_conversation(
@@ -297,6 +530,37 @@ def reset_conversation(
     session[_CONVERSATION_KEY] = ConversationState()
     session[_HISTORY_KEY] = [AIMessage(content=welcome_message)]
     session[_NOTICE_KEY] = None
+    session[_VIEW_KEY] = LANDING_VIEW
+    session.pop(_PENDING_KEY, None)
+
+
+def quick_actions() -> tuple[QuickAction, ...]:
+    """Retorna os atalhos oferecidos na tela inicial, em ordem de exibicao."""
+    return _QUICK_ACTIONS
+
+
+def current_view(session: MutableMapping[str, object]) -> str:
+    """Informa a tela ativa, assumindo a inicial enquanto nada foi escolhido."""
+    view = session.get(_VIEW_KEY)
+    return view if view in {LANDING_VIEW, CHAT_VIEW} else LANDING_VIEW
+
+
+def start_chat(session: MutableMapping[str, object], user_text: str) -> bool:
+    """Agenda a primeira mensagem e abre o chat; texto vazio nao troca a tela."""
+    text = user_text.strip()
+    if not text:
+        return False
+    session[_PENDING_KEY] = text
+    session[_VIEW_KEY] = CHAT_VIEW
+    return True
+
+
+def take_pending_message(session: MutableMapping[str, object]) -> str | None:
+    """Consome a mensagem agendada para que ela seja enviada uma unica vez."""
+    pending = session.pop(_PENDING_KEY, None)
+    if isinstance(pending, str) and pending.strip():
+        return pending
+    return None
 
 
 def mask_sensitive_text(text: str) -> str:
@@ -339,6 +603,11 @@ def chat_bubble_html(role: str, text: str) -> str:
         f'<div class="chat-bubble chat-bubble--{bubble_role}">'
         f"{safe_text}</div></div>"
     )
+
+
+def landing_status_html(status_message: str) -> str:
+    """Monta o rodape escapado com o modo conversacional da tela inicial."""
+    return f'<p class="landing-status">{escape(status_message)}</p>'
 
 
 def typing_indicator_html() -> str:
@@ -419,6 +688,7 @@ def submit_user_message(
     state = cast(ConversationState, session[_CONVERSATION_KEY])
     if state.ended and _looks_like_cpf(text):
         reset_conversation(session, welcome_message)
+        session[_VIEW_KEY] = CHAT_VIEW
         state = cast(ConversationState, session[_CONVERSATION_KEY])
     history = cast(Sequence[BaseMessage], session[_HISTORY_KEY])
     try:
@@ -458,13 +728,123 @@ def _get_runtime() -> tuple[ConversationService, GroqStructuredLlm | None]:
     return _build_conversation_service(settings, llm), llm
 
 
+def _render_quick_actions() -> str | None:
+    """Desenha os atalhos em grade e devolve a mensagem do atalho clicado."""
+    selected: str | None = None
+    actions = quick_actions()
+    for start in range(0, len(actions), _QUICK_ACTION_COLUMNS):
+        row = actions[start : start + _QUICK_ACTION_COLUMNS]
+        columns = st.columns(_QUICK_ACTION_COLUMNS, gap="small")
+        for index, action in enumerate(row):
+            with columns[index]:
+                clicked = st.button(
+                    action.label,
+                    key=f"quick_action_{action.key}",
+                    icon=action.icon,
+                    use_container_width=True,
+                )
+            if clicked:
+                selected = action.prompt
+    return selected
+
+
+def _render_landing(
+    session: MutableMapping[str, object],
+    settings: Settings,
+) -> None:
+    """Mostra a apresentação inicial e abre o chat na primeira interação."""
+    with st.container(key="landing"):
+        st.markdown(_LANDING_HERO, unsafe_allow_html=True)
+        # Dentro de um container o chat_input fica na propria coluna, e nao
+        # ancorado ao rodape, o que mantem o campo centralizado na abertura.
+        with st.container(key="landing_input"):
+            typed = st.chat_input(
+                "Descreva o que você precisa",
+                key="landing_chat_input",
+            )
+        with st.container(key="quick_actions"):
+            chosen = _render_quick_actions()
+        st.markdown(
+            landing_status_html(llm_status_message(settings)),
+            unsafe_allow_html=True,
+        )
+
+    requested = chosen or (typed if isinstance(typed, str) else "")
+    if start_chat(session, requested):
+        st.markdown(_LANDING_EXIT_STYLE, unsafe_allow_html=True)
+        time.sleep(_TRANSITION_SECONDS)
+        st.rerun()
+
+
+def _process_message(
+    session: MutableMapping[str, object],
+    service: ConversationServiceLike,
+    llm: GroqStructuredLlm | None,
+    user_text: str,
+) -> None:
+    """Exibe a mensagem do cliente, sinaliza digitação e executa o turno."""
+    render_chat_message("user", mask_sensitive_text(user_text.strip()))
+    typing_placeholder = st.empty()
+    typing_placeholder.markdown(typing_indicator_html(), unsafe_allow_html=True)
+    try:
+        submit_user_message(session, service, user_text, generate_welcome_message(llm))
+    finally:
+        typing_placeholder.empty()
+
+
+def _render_chat(
+    session: MutableMapping[str, object],
+    settings: Settings,
+    service: ConversationServiceLike,
+    llm: GroqStructuredLlm | None,
+) -> None:
+    """Mostra o histórico, processa a entrada e oferece novo atendimento."""
+    user_input = st.chat_input("Digite sua mensagem")
+    with st.container(key="chat_view"):
+        heading_column, restart_column = st.columns(
+            [5, 2], gap="small", vertical_alignment="center"
+        )
+        with heading_column:
+            st.markdown(_PAGE_HEADING, unsafe_allow_html=True)
+        with restart_column, st.container(key="restart_chat"):
+            restart = st.button(
+                "Novo atendimento",
+                key="restart_chat_button",
+                icon="🔄",
+                use_container_width=True,
+                help="Volta para a tela inicial e começa outro atendimento.",
+            )
+        if restart:
+            reset_conversation(session, generate_welcome_message(llm))
+            st.rerun()
+
+        st.caption(llm_status_message(settings))
+        history = cast(Sequence[BaseMessage], session[_HISTORY_KEY])
+        for role, safe_text in history_for_display(history):
+            render_chat_message(role, safe_text)
+
+        pending = take_pending_message(session)
+        message = pending if pending is not None else user_input
+        if isinstance(message, str) and message.strip():
+            _process_message(session, service, llm, message)
+            st.rerun()
+
+        notice = session[_NOTICE_KEY]
+        if isinstance(notice, str) and notice:
+            st.warning(notice)
+        state = cast(ConversationState, session[_CONVERSATION_KEY])
+        if state.ended:
+            st.info(
+                "Atendimento encerrado. "
+                "Para um novo atendimento, informe seu CPF com 11 dígitos."
+            )
+
+
 def main() -> None:
-    """Renderiza o chat e encaminha cada entrada ao serviço de conversa."""
+    """Escolhe entre a tela inicial e o chat conforme o estado da sessão."""
     st.set_page_config(page_title="Banco Ágil - Atendimento", page_icon="🏦")
     st.markdown(_UI_STYLES, unsafe_allow_html=True)
-    st.markdown(_PAGE_HEADING, unsafe_allow_html=True)
     settings = Settings()
-    st.caption(llm_status_message(settings))
     session = cast(MutableMapping[str, object], st.session_state)
     service, llm = _get_runtime()
     if _HISTORY_KEY not in session:
@@ -472,32 +852,10 @@ def main() -> None:
     else:
         init_session(session)
 
-    state = cast(ConversationState, session[_CONVERSATION_KEY])
-    history = cast(Sequence[BaseMessage], session[_HISTORY_KEY])
-    for role, safe_text in history_for_display(history):
-        render_chat_message(role, safe_text)
-
-    notice = session[_NOTICE_KEY]
-    if isinstance(notice, str) and notice:
-        st.warning(notice)
-    if state.ended:
-        st.info(
-            "Atendimento encerrado. "
-            "Para um novo atendimento, informe seu CPF com 11 dígitos."
-        )
-
-    user_input = st.chat_input("Digite sua mensagem")
-    if user_input is not None:
-        render_chat_message("user", mask_sensitive_text(user_input.strip()))
-        typing_placeholder = st.empty()
-        typing_placeholder.markdown(typing_indicator_html(), unsafe_allow_html=True)
-        try:
-            submit_user_message(
-                session, service, user_input, generate_welcome_message(llm)
-            )
-        finally:
-            typing_placeholder.empty()
-        st.rerun()
+    if current_view(session) == LANDING_VIEW:
+        _render_landing(session, settings)
+        return
+    _render_chat(session, settings, service, llm)
 
 
 if __name__ == "__main__" and st.runtime.exists():
