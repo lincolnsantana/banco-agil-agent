@@ -49,9 +49,10 @@ class RecordingLlm:
     response: object
     calls: list[tuple[str, list[BaseMessage], str | None]] = field(default_factory=list)
 
-    def was_called(self, turn_id: str) -> bool:
-        """Informa se o turno já foi registrado."""
-        return any(call[0] == turn_id for call in self.calls)
+    def calls_remaining(self, turn_id: str) -> int:
+        """Informa o saldo de chamadas do turno registrado."""
+        used = sum(1 for call in self.calls if call[0] == turn_id)
+        return max(0, 2 - used)
 
     def invoke_structured(
         self,
@@ -223,12 +224,12 @@ def _increase_result(status: CreditRequestStatus) -> LimitIncreaseResult:
 
 
 @pytest.mark.parametrize("agent", list(Agent))
-def test_humanization_uses_each_specialist_prompt_without_exposing_data(
+def test_humanization_rewrites_reply_without_exposing_data(
     client: Client,
     agent: Agent,
 ) -> None:
     state = ConversationState(authenticated_client=client, active_agent=agent)
-    llm = RecordingLlm({"opening": "Entendi, vamos cuidar disso com atenção."})
+    llm = RecordingLlm({"reply": "Claro! Resposta canônica com [DADO_1]."})
 
     reply = humanize_reply(
         state,
@@ -240,12 +241,32 @@ def test_humanization_uses_each_specialist_prompt_without_exposing_data(
         user_text="Meu CPF é 01234567890 e quero consultar meu limite",
     )
 
-    assert reply.startswith("Entendi, vamos cuidar disso com atenção.")
-    assert reply.endswith("Resposta canônica com R$ 2.500,00.")
+    assert reply == "Claro! Resposta canônica com R$ 2.500,00."
     _, messages, version = llm.calls[0]
-    assert version == f"global@1.2.0+{agent.value}@1.2.0"
+    assert version == f"global@1.3.0+{agent.value}@1.2.0"
     assert "01234567890" not in str(messages)
     assert "2.500,00" not in str(messages)
+    assert "R$ 2.500,00" not in str(messages)
+
+
+def test_humanization_violation_preserves_canonical_reply(
+    client: Client,
+) -> None:
+    state = ConversationState(authenticated_client=client)
+    llm = RecordingLlm({"reply": "Aprovado com R$ 9.999,00 garantidos."})
+    canonical = "Resposta canônica com R$ 2.500,00."
+
+    reply = humanize_reply(
+        state,
+        canonical,
+        llm,
+        "humanize-turn",
+        responding_agent=Agent.CREDIT,
+        recent_messages=[],
+        user_text="consultar limite",
+    )
+
+    assert reply == canonical
 
 
 def test_triage_collects_credentials_one_at_a_time(client: Client) -> None:
@@ -271,7 +292,9 @@ def test_triage_third_failure_ends_without_disclosing_wrong_field() -> None:
     assert "nascimento" not in reply.casefold()
 
 
-def test_clear_intent_routes_without_llm(client: Client) -> None:
+def test_llm_classifies_intent_before_deterministic_parser(
+    client: Client,
+) -> None:
     state = ConversationState(authenticated_client=client)
     llm = RecordingLlm({"intent": "other"})
 
@@ -283,10 +306,21 @@ def test_clear_intent_routes_without_llm(client: Client) -> None:
         turn_id="turn-1",
     )
 
+    assert "limite" in reply.casefold()
+    assert state.active_agent is Agent.TRIAGE
+    assert len(llm.calls) == 1
+
+
+def test_deterministic_parser_routes_without_llm(client: Client) -> None:
+    state = ConversationState(authenticated_client=client)
+
+    reply = handle_triage(
+        state, "quero aumentar meu limite", FakeAuthenticationService(client)
+    )
+
     assert reply
     assert state.intent is Intent.LIMIT_INCREASE
     assert state.active_agent is Agent.CREDIT
-    assert llm.calls == []
 
 
 def test_ambiguous_intent_uses_one_structured_llm_call(client: Client) -> None:
@@ -309,7 +343,7 @@ def test_ambiguous_intent_uses_one_structured_llm_call(client: Client) -> None:
     turn_id, messages, version = llm.calls[0]
     assert turn_id == "turn-2"
     assert sum(isinstance(message, SystemMessage) for message in messages) == 1
-    assert version == "global@1.2.0+triage@1.2.0"
+    assert version == "global@1.3.0+triage@1.2.0"
     assert "01234567890" not in str(messages[1].content)
     assert "Ana" not in str(messages[1].content)
     assert "formal" not in str(messages[1].content)

@@ -98,9 +98,9 @@ def test_settings_use_required_llm_defaults() -> None:
 
     assert settings.groq_api_key is None
     assert settings.groq_model == "llama-3.3-70b-versatile"
-    assert settings.llm_temperature == 0.1
-    assert settings.llm_max_tokens == 180
-    assert settings.llm_timeout_seconds == 20.0
+    assert settings.llm_temperature == 0.3
+    assert settings.llm_max_tokens == 500
+    assert settings.llm_timeout_seconds == 30.0
 
 
 def test_settings_hide_configured_api_key() -> None:
@@ -140,11 +140,13 @@ def test_fake_llm_rejects_invalid_structured_output() -> None:
         fake.invoke_structured("turn-1", [], IntentOutput)
 
 
-def test_fake_llm_blocks_second_call_in_same_turn() -> None:
+def test_fake_llm_allows_two_calls_per_turn() -> None:
     fake = FakeStructuredLlm({"intent": "other"})
-    assert not fake.was_called("turn-1")
+    assert fake.calls_remaining("turn-1") == 2
     fake.invoke_structured("turn-1", [], IntentOutput)
-    assert fake.was_called("turn-1")
+    assert fake.calls_remaining("turn-1") == 1
+    fake.invoke_structured("turn-1", [], IntentOutput)
+    assert fake.calls_remaining("turn-1") == 0
 
     with pytest.raises(LlmCallLimitError):
         fake.invoke_structured("turn-1", [], IntentOutput)
@@ -163,7 +165,7 @@ def test_groq_adapter_applies_configuration_and_records_usage(
     adapter = GroqStructuredLlm(build_settings(), metrics_recorder=recorder)
     messages = [HumanMessage(content="Preciso de ajuda")]
 
-    assert not adapter.was_called("turn-1")
+    assert adapter.calls_remaining("turn-1") == 2
     result = adapter.invoke_structured(
         "turn-1",
         messages,
@@ -172,13 +174,13 @@ def test_groq_adapter_applies_configuration_and_records_usage(
     )
 
     assert result.intent is Intent.CREDIT_LIMIT
-    assert adapter.was_called("turn-1")
+    assert adapter.calls_remaining("turn-1") == 1
     assert FakeChatGroq.init_kwargs == {
         "api_key": SecretStr("test-key"),
         "model": "llama-3.3-70b-versatile",
-        "temperature": 0.1,
-        "max_tokens": 180,
-        "timeout": 20.0,
+        "temperature": 0.3,
+        "max_tokens": 500,
+        "timeout": 30.0,
         "max_retries": 0,
     }
     assert FakeChatGroq.schema is IntentOutput
@@ -206,7 +208,7 @@ def test_timeout_is_controlled_recorded_and_consumes_turn_budget(
 ) -> None:
     monkeypatch.setattr("banco_agil.integrations.llm.ChatGroq", FakeChatGroq)
     FakeRunnable.error = TimeoutError("simulated timeout")
-    timer_values = iter([1.0, 1.2])
+    timer_values = iter([1.0, 1.2, 2.0, 2.2])
     monkeypatch.setattr(
         "banco_agil.integrations.llm.perf_counter",
         lambda: next(timer_values),
@@ -216,13 +218,18 @@ def test_timeout_is_controlled_recorded_and_consumes_turn_budget(
 
     with pytest.raises(IntegrationError, match="LLM provider failed"):
         adapter.invoke_structured("turn-1", [], IntentOutput)
+    assert adapter.calls_remaining("turn-1") == 1
+    FakeRunnable.error = None
+    adapter.invoke_structured("turn-1", [], IntentOutput)
+    assert adapter.calls_remaining("turn-1") == 0
     with pytest.raises(LlmCallLimitError):
         adapter.invoke_structured("turn-1", [], IntentOutput)
 
-    assert len(recorder.calls) == 1
+    assert len(recorder.calls) == 2
     assert recorder.calls[0].duration_ms == pytest.approx(200.0)
     assert not recorder.calls[0].succeeded
     assert recorder.calls[0].input_tokens is None
+    assert recorder.calls[1].succeeded
 
 
 def test_invalid_provider_output_is_controlled(

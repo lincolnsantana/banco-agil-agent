@@ -7,7 +7,7 @@ from typing import TypeVar
 
 import pytest
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from banco_agil.agents.graph import GraphDependencies, build_graph
 from banco_agil.agents.router import MAX_HANDLER_STEPS
@@ -18,6 +18,7 @@ from banco_agil.domain.enums import (
     EmploymentType,
     EndReason,
 )
+from banco_agil.domain.exceptions import IntegrationError
 from banco_agil.domain.models import Client, CreditRequest, ExchangeQuote
 from banco_agil.services.authentication import AuthenticationService
 from banco_agil.services.conversation import ConversationService
@@ -108,15 +109,15 @@ class RecordingExchangeProvider:
 
 @dataclass
 class RecordingLlm:
-    """Registra uma classificacao estruturada sem rede."""
+    """Registra chamadas estruturadas sem rede, com orçamento por turno."""
 
     response: object
     calls: list[list[BaseMessage]] = field(default_factory=list)
-    called_turns: set[str] = field(default_factory=set)
+    used_turns: dict[str, int] = field(default_factory=dict)
 
-    def was_called(self, turn_id: str) -> bool:
-        """Informa se o turno já foi registrado."""
-        return turn_id in self.called_turns
+    def calls_remaining(self, turn_id: str) -> int:
+        """Informa o saldo de chamadas do turno registrado."""
+        return max(0, 2 - self.used_turns.get(turn_id, 0))
 
     def invoke_structured(
         self,
@@ -126,11 +127,14 @@ class RecordingLlm:
         *,
         prompt_version: str | None = None,
     ) -> OutputModel:
-        """Valida a resposta configurada."""
+        """Valida a resposta configurada como o adaptador real."""
         del prompt_version
-        self.called_turns.add(turn_id)
+        self.used_turns[turn_id] = self.used_turns.get(turn_id, 0) + 1
         self.calls.append(messages)
-        return output_schema.model_validate(self.response)
+        try:
+            return output_schema.model_validate(self.response)
+        except ValidationError as error:
+            raise IntegrationError("invalid structured LLM output") from error
 
 
 @dataclass
@@ -205,18 +209,25 @@ def test_triage_routes_to_credit_and_returns_final_reply_in_same_turn(
     assert isinstance(turn.history[1], AIMessage)
 
 
-def test_clear_request_is_humanized_after_business_response(client: Client) -> None:
-    llm = RecordingLlm({"opening": "Claro, vou contextualizar para você."})
+def test_clear_request_uses_two_calls_and_is_rewritten(client: Client) -> None:
+    llm = RecordingLlm(
+        {
+            "intent": "credit_limit",
+            "reply": (
+                "Com certeza! Seu limite atual é [DADO_1]. Posso ajudar em algo mais?"
+            ),
+        }
+    )
     harness = build_harness(client, llm)
     state = ConversationState(authenticated_client=client)
 
     turn = harness.service.handle_turn(state, (), "qual é meu limite?")
 
-    assert turn.reply.startswith("Claro, vou contextualizar para você.")
+    assert turn.reply.startswith("Com certeza!")
     assert "2.500,00" in turn.reply
-    assert len(llm.calls) == 1
-    assert "2.500,00" not in str(llm.calls[0])
-    assert "Escopo: consultar limite" in str(llm.calls[0][0].content)
+    assert len(llm.calls) == 2
+    assert "2.500,00" not in str(llm.calls)
+    assert "Escopo: consultar limite" in str(llm.calls[1][0].content)
 
 
 def test_triage_routes_to_exchange_in_same_turn(client: Client) -> None:
@@ -290,7 +301,7 @@ def test_graph_step_guard_returns_controlled_reply(client: Client) -> None:
     assert harness.exchange.calls == []
 
 
-def test_ambiguous_intent_uses_one_llm_call_and_stays_in_triage(
+def test_ambiguous_intent_falls_back_to_canonical_clarification(
     client: Client,
 ) -> None:
     llm = RecordingLlm({"intent": "other"})
@@ -299,7 +310,7 @@ def test_ambiguous_intent_uses_one_llm_call_and_stays_in_triage(
 
     turn = harness.service.handle_turn(state, (), "preciso resolver outra coisa")
 
-    assert len(llm.calls) == 1
+    assert len(llm.calls) == 2
     assert state.active_agent is Agent.TRIAGE
     assert "limite" in turn.reply.casefold()
     assert "cotação" in turn.reply.casefold()

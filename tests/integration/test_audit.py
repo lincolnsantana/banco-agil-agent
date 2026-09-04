@@ -11,11 +11,12 @@ from typing import TypeVar
 
 import pytest
 from langchain_core.messages import BaseMessage
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from banco_agil.agents.graph import GraphDependencies, build_graph
 from banco_agil.agents.state import ConversationState
 from banco_agil.domain.enums import Agent, AuditEventType
+from banco_agil.domain.exceptions import IntegrationError
 from banco_agil.domain.models import AuditEvent, Client
 from banco_agil.observability.logging import get_logger, sanitize_context
 from banco_agil.observability.metrics import InMemoryLlmMetricsRecorder, LlmCallMetrics
@@ -91,9 +92,10 @@ class MetricsRecordingLlm:
     metrics: InMemoryLlmMetricsRecorder
     calls: list[str] = field(default_factory=list)
 
-    def was_called(self, turn_id: str) -> bool:
-        """Informa se o turno já foi registrado."""
-        return turn_id in self.calls
+    def calls_remaining(self, turn_id: str) -> int:
+        """Informa o saldo de chamadas do turno registrado."""
+        used = sum(1 for call in self.calls if call == turn_id)
+        return max(0, 2 - used)
 
     def invoke_structured(
         self,
@@ -113,7 +115,10 @@ class MetricsRecordingLlm:
                 prompt_version=prompt_version,
             )
         )
-        return output_schema.model_validate(self.response)
+        try:
+            return output_schema.model_validate(self.response)
+        except ValidationError as error:
+            raise IntegrationError("invalid structured LLM output") from error
 
 
 def _client() -> Client:
@@ -206,7 +211,7 @@ def test_audit_storage_and_logs_contain_no_pii(
     assert FAKE_BIRTH_DATE not in caplog.text
 
 
-def test_metrics_distinguish_zero_and_one_llm_call() -> None:
+def test_metrics_distinguish_zero_and_bounded_llm_calls() -> None:
     metrics = InMemoryLlmMetricsRecorder()
     service = _service(None)
     state = ConversationState(authenticated_client=_client())
@@ -214,21 +219,38 @@ def test_metrics_distinguish_zero_and_one_llm_call() -> None:
     service.handle_turn(state, (), "quero aumentar meu limite")
     assert metrics.calls == []
 
-    llm = MetricsRecordingLlm({"opening": "Entendi, vamos prosseguir."}, metrics)
+    llm = MetricsRecordingLlm(
+        {
+            "intent": "credit_limit",
+            "reply": (
+                "Com certeza! Seu limite atual é [DADO_1]. Posso ajudar em algo mais?"
+            ),
+        },
+        metrics,
+    )
     humanized_service = _service(None, llm)
     humanized_state = ConversationState(authenticated_client=_client())
-    humanized_service.handle_turn(humanized_state, (), "quero aumentar meu limite")
-    assert len(metrics.calls) == 1
-    assert metrics.calls[0].model == "fake-model"
-    assert metrics.calls[0].prompt_version == "global@1.2.0+credit@1.2.0"
+    turn = humanized_service.handle_turn(
+        humanized_state, (), "quero aumentar meu limite"
+    )
+    assert turn.reply.startswith("Com certeza!")
+    assert len(metrics.calls) == 2
+    assert [call.prompt_version for call in metrics.calls] == [
+        "global@1.3.0+triage@1.2.0",
+        "global@1.3.0+credit@1.2.0",
+    ]
+    assert all(call.model == "fake-model" for call in metrics.calls)
 
     ambiguous_metrics = InMemoryLlmMetricsRecorder()
     ambiguous_llm = MetricsRecordingLlm({"intent": "other"}, ambiguous_metrics)
     ambiguous_service = _service(None, ambiguous_llm)
     ambiguous_state = ConversationState(authenticated_client=_client())
     ambiguous_service.handle_turn(ambiguous_state, (), "preciso resolver outra coisa")
-    assert len(ambiguous_metrics.calls) == 1
-    assert ambiguous_metrics.calls[0].prompt_version == ("global@1.2.0+triage@1.2.0")
+    assert len(ambiguous_metrics.calls) == 2
+    assert all(
+        call.prompt_version == "global@1.3.0+triage@1.2.0"
+        for call in ambiguous_metrics.calls
+    )
 
 
 def test_audit_failure_is_non_fatal(tmp_path: Path) -> None:
@@ -270,7 +292,7 @@ def test_repository_round_trips_integration_event_with_llm_fields(
             result="ok",
             duration_ms=12.5,
             model="fake-model",
-            prompt_version="global@1.2.0+triage@1.2.0",
+            prompt_version="global@1.3.0+triage@1.2.0",
             llm_calls=1,
             input_tokens=120,
             output_tokens=30,
