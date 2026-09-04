@@ -32,6 +32,7 @@ from banco_agil.services.welcome import (
 _CONVERSATION_KEY = "conversation"
 _HISTORY_KEY = "history"
 _NOTICE_KEY = "notice"
+_WELCOME_KEY = "welcome_message"
 _VIEW_KEY = "view"
 _PENDING_KEY = "pending_message"
 
@@ -283,7 +284,7 @@ body,
 .landing-hero__title {
     margin: 0;
     font-size: clamp(1.8rem, 5vw, 2.6rem);
-    font-weight: 600;
+    font-weight: 400;
     letter-spacing: -0.04em;
     line-height: 1.12;
 }
@@ -463,7 +464,9 @@ def init_session(
     if _CONVERSATION_KEY not in session:
         session[_CONVERSATION_KEY] = ConversationState()
     if _HISTORY_KEY not in session:
-        session[_HISTORY_KEY] = [AIMessage(content=welcome_message)]
+        session[_HISTORY_KEY] = []
+    if _WELCOME_KEY not in session:
+        session[_WELCOME_KEY] = welcome_message
     if _NOTICE_KEY not in session:
         session[_NOTICE_KEY] = None
     if _VIEW_KEY not in session:
@@ -476,10 +479,20 @@ def reset_conversation(
 ) -> None:
     """Reinicia a conversa em memoria sem apagar nenhuma persistencia."""
     session[_CONVERSATION_KEY] = ConversationState()
-    session[_HISTORY_KEY] = [AIMessage(content=welcome_message)]
+    session[_HISTORY_KEY] = []
+    session[_WELCOME_KEY] = welcome_message
     session[_NOTICE_KEY] = None
     session[_VIEW_KEY] = LANDING_VIEW
     session.pop(_PENDING_KEY, None)
+
+
+def stored_welcome(
+    session: MutableMapping[str, object],
+    default: str = DEFAULT_WELCOME_MESSAGE,
+) -> str:
+    """Devolve a saudacao ja fixada na sessao, sem pedir outra ao modelo."""
+    welcome = session.get(_WELCOME_KEY)
+    return welcome if isinstance(welcome, str) and welcome.strip() else default
 
 
 def quick_actions() -> tuple[QuickAction, ...]:
@@ -605,6 +618,35 @@ def llm_status_message(settings: Settings) -> str:
     )
 
 
+def greets_instead_of_replying(state: ConversationState) -> bool:
+    """Indica se a saudacao substitui a resposta da primeira troca.
+
+    So vale quando o turno nao avancou a autenticacao nem encerrou: se o
+    cliente ja mandou um CPF valido ou errou a tentativa, a resposta real do
+    atendimento e a util e a saudacao seria confusa.
+    """
+    return (
+        not state.authenticated
+        and not state.ended
+        and state.pending_cpf is None
+        and state.authentication_attempts == 0
+    )
+
+
+def _history_with_reply(
+    history: Sequence[BaseMessage],
+    reply: str,
+) -> list[BaseMessage]:
+    """Troca o texto da ultima fala do assistente pelo texto informado."""
+    updated = list(history)
+    for index in range(len(updated) - 1, -1, -1):
+        if isinstance(updated[index], AIMessage):
+            updated[index] = AIMessage(content=reply)
+            return updated
+    updated.append(AIMessage(content=reply))
+    return updated
+
+
 def _looks_like_cpf(text: str) -> bool:
     """Indica se o texto contém 11 dígitos para reabrir o atendimento."""
     return len(re.sub(r"\D", "", text)) == 11
@@ -634,6 +676,7 @@ def submit_user_message(
         session[_VIEW_KEY] = CHAT_VIEW
         state = cast(ConversationState, session[_CONVERSATION_KEY])
     history = cast(Sequence[BaseMessage], session[_HISTORY_KEY])
+    first_turn = not history
     try:
         turn = service.handle_turn(state, history, text)
     except DomainError:
@@ -648,8 +691,12 @@ def submit_user_message(
         session[_NOTICE_KEY] = notice
         return notice
     session[_CONVERSATION_KEY] = turn.state
-    session[_HISTORY_KEY] = list(turn.history)
     session[_NOTICE_KEY] = None
+    if first_turn and greets_instead_of_replying(turn.state):
+        greeting = stored_welcome(session, welcome_message)
+        session[_HISTORY_KEY] = _history_with_reply(turn.history, greeting)
+        return greeting
+    session[_HISTORY_KEY] = list(turn.history)
     return turn.reply
 
 
@@ -715,7 +762,6 @@ def _render_landing(session: MutableMapping[str, object]) -> None:
 def _process_message(
     session: MutableMapping[str, object],
     service: ConversationServiceLike,
-    llm: GroqStructuredLlm | None,
     user_text: str,
 ) -> None:
     """Exibe a mensagem do cliente, sinaliza digitação e executa o turno."""
@@ -723,7 +769,7 @@ def _process_message(
     typing_placeholder = st.empty()
     typing_placeholder.markdown(typing_indicator_html(), unsafe_allow_html=True)
     try:
-        submit_user_message(session, service, user_text, generate_welcome_message(llm))
+        submit_user_message(session, service, user_text, stored_welcome(session))
     finally:
         typing_placeholder.empty()
 
@@ -762,7 +808,7 @@ def _render_chat(
         pending = take_pending_message(session)
         message = pending if pending is not None else user_input
         if isinstance(message, str) and message.strip():
-            _process_message(session, service, llm, message)
+            _process_message(session, service, message)
             st.rerun()
 
         notice = session[_NOTICE_KEY]

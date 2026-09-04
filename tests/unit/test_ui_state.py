@@ -21,14 +21,15 @@ from app import (  # noqa: E402
     chat_avatar,
     chat_bubble_html,
     current_view,
+    greets_instead_of_replying,
     history_for_display,
     init_session,
-    landing_status_html,
     llm_status_message,
     mask_sensitive_text,
     quick_actions,
     reset_conversation,
     start_chat,
+    stored_welcome,
     submit_user_message,
     take_pending_message,
     typing_indicator_html,
@@ -49,6 +50,7 @@ class FakeConversationService:
     replies: list[str]
     calls: list[str]
     fail_with: BaseException | None = None
+    pending_cpf: str | None = None
 
     def handle_turn(
         self,
@@ -61,6 +63,8 @@ class FakeConversationService:
         self.calls.append(user_text)
         if self.fail_with is not None:
             raise self.fail_with
+        if self.pending_cpf is not None:
+            state.pending_cpf = self.pending_cpf
         reply = self.replies.pop(0) if self.replies else "resposta"
         updated_history = (HumanMessage(content=user_text), AIMessage(content=reply))
         return ConversationTurn(state=state, history=updated_history, reply=reply)
@@ -74,10 +78,9 @@ def test_init_session_preserves_existing_conversation() -> None:
     init_session(session)
 
     assert session["conversation"] is first_conversation
-    history = cast(list[BaseMessage], session["history"])
-    assert len(history) == 1
-    assert isinstance(history[0], AIMessage)
-    assert history[0].content == DEFAULT_WELCOME_MESSAGE
+    # A tela inicial faz a acolhida: o chat abre sem nenhuma fala previa.
+    assert cast(list[BaseMessage], session["history"]) == []
+    assert stored_welcome(session) == DEFAULT_WELCOME_MESSAGE
     assert session["notice"] is None
 
 
@@ -91,10 +94,8 @@ def test_reset_conversation_keeps_persistence_files(tmp_path: Path) -> None:
     reset_conversation(session)
 
     assert isinstance(session["conversation"], ConversationState)
-    history = cast(list[BaseMessage], session["history"])
-    assert len(history) == 1
-    assert isinstance(history[0], AIMessage)
-    assert history[0].content == DEFAULT_WELCOME_MESSAGE
+    assert cast(list[BaseMessage], session["history"]) == []
+    assert stored_welcome(session) == DEFAULT_WELCOME_MESSAGE
     assert session["notice"] is None
     assert persistence.read_text(encoding="utf-8") == "conteudo"
 
@@ -104,11 +105,11 @@ def test_session_uses_generated_welcome_message() -> None:
 
     init_session(session, "Boas-vindas geradas pelo modelo.")
 
-    history = cast(list[BaseMessage], session["history"])
-    assert history[0].content == "Boas-vindas geradas pelo modelo."
+    assert stored_welcome(session) == "Boas-vindas geradas pelo modelo."
+    assert cast(list[BaseMessage], session["history"]) == []
 
 
-def test_submit_forwards_exact_text_and_updates_session() -> None:
+def test_first_turn_puts_the_client_first_and_answers_with_the_welcome() -> None:
     session: dict[str, object] = {}
     init_session(session)
     service = FakeConversationService(replies=["tudo bem?"], calls=[], fail_with=None)
@@ -117,11 +118,60 @@ def test_submit_forwards_exact_text_and_updates_session() -> None:
         session, cast(app.ConversationServiceLike, service), "  olá  "
     )
 
-    assert reply == "tudo bem?"
+    # O texto exato segue para o servico; so a fala exibida vira a saudacao.
     assert service.calls == ["olá"]
+    assert reply == DEFAULT_WELCOME_MESSAGE
     assert session["notice"] is None
     history = cast(list[BaseMessage], session["history"])
-    assert [message.content for message in history] == ["olá", "tudo bem?"]
+    assert isinstance(history[0], HumanMessage)
+    assert [message.content for message in history] == [
+        "olá",
+        DEFAULT_WELCOME_MESSAGE,
+    ]
+
+
+def test_later_turns_return_the_service_reply() -> None:
+    session: dict[str, object] = {}
+    init_session(session)
+    service = FakeConversationService(
+        replies=["saudacao substituida", "tudo bem?"], calls=[], fail_with=None
+    )
+    submit_user_message(session, cast(app.ConversationServiceLike, service), "olá")
+
+    reply = submit_user_message(
+        session, cast(app.ConversationServiceLike, service), "e aí"
+    )
+
+    assert reply == "tudo bem?"
+    assert service.calls == ["olá", "e aí"]
+
+
+def test_first_turn_keeps_the_reply_when_the_cpf_was_recognized() -> None:
+    session: dict[str, object] = {}
+    init_session(session)
+    service = FakeConversationService(
+        replies=["CPF localizado."],
+        calls=[],
+        fail_with=None,
+        pending_cpf="11144477735",
+    )
+
+    reply = submit_user_message(
+        session, cast(app.ConversationServiceLike, service), "11144477735"
+    )
+
+    # Repetir a saudacao aqui pediria o CPF de novo, logo apos recebe-lo.
+    assert reply == "CPF localizado."
+
+
+def test_greeting_only_replaces_the_reply_while_nothing_advanced() -> None:
+    fresh = ConversationState()
+    with_cpf = ConversationState(pending_cpf="11144477735")
+    failed = ConversationState(authentication_attempts=1)
+
+    assert greets_instead_of_replying(fresh) is True
+    assert greets_instead_of_replying(with_cpf) is False
+    assert greets_instead_of_replying(failed) is False
 
 
 def test_submit_empty_message_does_not_call_service() -> None:
@@ -136,7 +186,7 @@ def test_submit_empty_message_does_not_call_service() -> None:
     assert service.calls == []
     assert "Digite" in reply
     assert session["notice"] == reply
-    assert len(cast(list[BaseMessage], session["history"])) == 1
+    assert cast(list[BaseMessage], session["history"]) == []
 
 
 def test_submit_ended_conversation_returns_restart_guidance() -> None:
@@ -154,7 +204,7 @@ def test_submit_ended_conversation_returns_restart_guidance() -> None:
 
     assert "CPF" in reply
     assert "Reinicie" not in reply
-    assert len(cast(list[BaseMessage], session["history"])) == 1
+    assert cast(list[BaseMessage], session["history"]) == []
 
 
 def test_submit_cpf_after_end_starts_new_attendance() -> None:
@@ -165,7 +215,10 @@ def test_submit_cpf_after_end_starts_new_attendance() -> None:
     ended_state = cast(ConversationState, session["conversation"])
     ended_state.end(EndReason.USER_REQUEST)
     service = FakeConversationService(
-        replies=["CPF localizado."], calls=[], fail_with=None
+        replies=["CPF localizado."],
+        calls=[],
+        fail_with=None,
+        pending_cpf="11144477735",
     )
 
     reply = submit_user_message(
@@ -199,7 +252,7 @@ def test_submit_hides_technical_details_on_integration_failure() -> None:
     assert "Tente novamente" in reply
     assert "/tmp/x" not in reply
     assert "Traceback" not in reply
-    assert len(cast(list[BaseMessage], session["history"])) == 1
+    assert cast(list[BaseMessage], session["history"]) == []
 
 
 def test_mask_sensitive_text_hides_cpf_and_birth_date() -> None:
@@ -405,15 +458,18 @@ def test_reset_conversation_returns_to_landing_and_drops_pending() -> None:
 def test_quick_actions_offer_the_four_services() -> None:
     actions = quick_actions()
 
-    assert [action.label for action in actions] == [
-        "Visualizar limite",
-        "Solicitar aumento de crédito",
-        "Entrevista para atualizar crédito",
-        "Cotação de moedas",
+    # O rotulo e texto de vitrine e pode mudar; a chave identifica o servico.
+    assert [action.key for action in actions] == [
+        "credit_limit",
+        "limit_increase",
+        "credit_interview",
+        "exchange_rate",
     ]
     assert all(isinstance(action, QuickAction) for action in actions)
-    assert len({action.key for action in actions}) == len(actions)
+    assert all(action.label.strip() for action in actions)
+    assert all(action.icon.strip() for action in actions)
     assert all(action.prompt.strip() for action in actions)
+    assert len({action.label for action in actions}) == len(actions)
 
 
 @pytest.mark.parametrize(
@@ -445,11 +501,3 @@ def test_quick_action_prompt_routes_without_llm(
     assert state.intent is expected_intent
     assert state.active_agent is expected_agent
     assert state.pending_flow is None
-
-
-def test_landing_status_escapes_message() -> None:
-    html = landing_status_html("Modo <script>alert(1)</script>")
-
-    assert "landing-status" in html
-    assert "<script>" not in html
-    assert "&lt;script&gt;" in html

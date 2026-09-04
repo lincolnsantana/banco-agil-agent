@@ -14,14 +14,17 @@ Cobertura automatizada correspondente em `tests/e2e/test_journeys.py`.
 ## CT00 — Abertura da interface
 
 1. Inicie `streamlit run app.py`.
-2. Na tela inicial, confirme o título centralizado, a tipografia Inter e os quatro
-   atalhos (Visualizar limite, Solicitar aumento de crédito, Entrevista para
-   atualizar crédito, Cotação de moedas). Clique em um deles e verifique que o
-   texto entra no chat como mensagem do cliente, com transição animada; o campo
-   central também aceita texto livre.
+2. Na tela inicial, confirme que aparecem apenas a pergunta centralizada, o campo
+   de mensagem e os quatro atalhos (Visualizar limite, Aumento de crédito,
+   Atualizar score, Cotação de moedas) — sem cabeçalho do banco e sem o aviso de
+   modo do Groq, que ficam só no chat. Confira o campo e os atalhos arredondados
+   com borda de contraste. Clique em um atalho e verifique que o texto entra no
+   chat como mensagem do cliente, com transição animada; o campo central também
+   aceita texto livre.
 3. Confirme o cabeçalho simples `🏦 Banco Ágil`, a tipografia Inter e o fundo
    branco no tema claro, sem sobrepor o header nativo do Streamlit.
-4. Observe a primeira mensagem antes de digitar.
+4. Confirme que o chat abre sem nenhuma fala previa: a primeira bolha é a do
+   cliente, e a saudação vem como resposta a ela.
 5. Envie uma mensagem e confira os balões internos azul/ardósia com texto branco,
    sem títulos internos, e avatares `🧑`/`🏦` alinhados à primeira linha do texto,
    no desktop e no celular.
@@ -33,9 +36,9 @@ Cobertura automatizada correspondente em `tests/e2e/test_journeys.py`.
    sem círculo de carregamento ou texto `Digitando...`.
 9. Clique em **Novo atendimento** e confirme o retorno à tela inicial.
 
-Resultado esperado: o assistente se apresenta, informa que atende limite,
-aumento, entrevista de crédito e câmbio, explica que a autenticação vem primeiro
-e já solicita o CPF. Os botões existem apenas na tela inicial, como atalhos que
+Resultado esperado: a mensagem do cliente abre a conversa e o assistente
+responde se apresentando — informa que atende limite, aumento, entrevista de
+crédito e câmbio, explica que a autenticação vem primeiro e já solicita o CPF. Os botões existem apenas na tela inicial, como atalhos que
 viram mensagem do cliente; dentro do chat tudo acontece na conversa, com o botão
 **Novo atendimento** voltando para a tela inicial. Barra, balões, avatares e campo
 de mensagem permanecem legíveis nos dois tamanhos de tela.
@@ -44,12 +47,14 @@ de mensagem permanecem legíveis nos dois tamanhos de tela.
 
 1. Inicie `streamlit run app.py` (ou execute os turnos via `ConversationService`).
 2. Envie `quero consultar meu limite`.
-3. Confirme a explicação de segurança e envie `11144477735`.
+3. Confirme que a resposta é a saudação, que já pede o CPF, e envie
+   `11144477735`.
 4. Confirme que o CPF foi localizado, mas que a autenticação ainda depende do
    nascimento, e envie `20/05/1990`.
 5. Envie `qual é meu limite?`.
 
-Resultado esperado: explicação antes do pedido de CPF; confirmação apenas de que
+Resultado esperado: saudação como primeira resposta, já pedindo o CPF;
+confirmação apenas de que
 o CPF foi localizado; pedido de nascimento em `DD/MM/AAAA`; autenticação somente
 após combinar os dados; resposta `Seu limite atual é R$ 2.500,00...`. CPF e
 nascimento ficam mascarados.

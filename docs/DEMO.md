@@ -17,8 +17,8 @@ Dados fictícios: CPF `11144477735`, nascimento `20/05/1990`. Sem chave de LLM.
 
 1. `streamlit run app.py`.
 2. Mostre a tela inicial com os quatro atalhos e clique em **Visualizar limite**:
-   o texto entra no chat como se o cliente tivesse digitado, e a apresentação
-   inicial (que já pede o CPF) aparece com a transição animada.
+   com a transição animada, o texto abre o chat como se o cliente tivesse
+   digitado e a apresentação inicial (que já pede o CPF) vem como resposta.
 3. Envie `11144477735` direto na abertura → localiza o CPF e pede o nascimento.
 5. Envie `20/05/1990` → `Dados confirmados. Como posso ajudar hoje?`
 6. Envie `qual é meu limite?` → `Seu limite atual é R$ 2.500,00...`
