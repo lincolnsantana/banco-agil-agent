@@ -15,6 +15,7 @@ import app  # noqa: E402
 from app import (  # noqa: E402
     build_conversation_service,
     chat_avatar,
+    chat_bubble_html,
     history_for_display,
     init_session,
     llm_status_message,
@@ -222,6 +223,19 @@ def test_chat_avatars_use_person_and_bank_emojis() -> None:
     assert chat_avatar("user") == "🧑"
     assert chat_avatar("assistant") == "🏦"
     assert chat_avatar("unknown") == "💬"
+
+
+def test_chat_bubbles_identify_roles_and_escape_content() -> None:
+    user_bubble = chat_bubble_html("user", "Olá <script>alert(1)</script>")
+    assistant_bubble = chat_bubble_html("assistant", "Linha 1\nLinha 2")
+
+    assert "chat-bubble--user" in user_bubble
+    assert "Você" in user_bubble
+    assert "<script>" not in user_bubble
+    assert "&lt;script&gt;" in user_bubble
+    assert "chat-bubble--assistant" in assistant_bubble
+    assert "Banco Ágil" in assistant_bubble
+    assert "Linha 1<br>Linha 2" in assistant_bubble
 
 
 def test_build_service_without_key_supports_deterministic_turns(

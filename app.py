@@ -2,6 +2,7 @@
 
 import re
 from collections.abc import MutableMapping, Sequence
+from html import escape
 from typing import Protocol, cast
 
 import streamlit as st
@@ -88,32 +89,62 @@ body,
 }
 
 [data-testid="stChatMessage"] {
+    width: 100%;
+    max-width: 100%;
+    margin: 0.6rem 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    align-items: flex-start;
+}
+
+[data-testid="stChatMessage"] [data-testid="stChatMessageContent"] {
+    display: flex;
+    width: 100%;
+}
+
+[data-testid="stChatMessage"]:has(.chat-bubble--user) {
+    flex-direction: row-reverse;
+}
+
+[data-testid="stChatMessage"]:has(.chat-bubble--user)
+[data-testid="stChatMessageContent"] {
+    justify-content: flex-end;
+}
+
+.chat-bubble {
     width: fit-content;
-    max-width: min(82%, 680px);
-    margin: 0.55rem 0;
+    max-width: min(78%, 680px);
     padding: 0.8rem 1rem;
     border: 1px solid var(--agil-border);
     border-radius: 18px;
     color: var(--agil-text);
-    background: var(--agil-surface);
+    line-height: 1.55;
+    overflow-wrap: anywhere;
     box-shadow: 0 3px 14px var(--agil-shadow);
 }
 
-[data-testid="stChatMessage"][aria-label="Chat message from user"] {
-    margin-left: auto;
-    border-color: color-mix(in srgb, var(--agil-accent) 42%, var(--agil-border));
-    border-bottom-right-radius: 5px;
+.chat-bubble--assistant {
+    margin-right: auto;
+    border-bottom-left-radius: 5px;
     background: var(--agil-surface-muted);
 }
 
-[data-testid="stChatMessage"][aria-label="Chat message from assistant"] {
-    margin-right: auto;
-    border-bottom-left-radius: 5px;
+.chat-bubble--user {
+    margin-left: auto;
+    border-color: color-mix(in srgb, var(--agil-accent) 48%, var(--agil-border));
+    border-bottom-right-radius: 5px;
+    background: color-mix(in srgb, var(--agil-accent) 14%, var(--agil-surface));
 }
 
-[data-testid="stChatMessageContent"] p {
-    color: var(--agil-text);
-    line-height: 1.55;
+.chat-bubble__sender {
+    display: block;
+    margin-bottom: 0.25rem;
+    color: var(--agil-muted);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
 }
 
 [data-testid="stChatInput"] {
@@ -137,8 +168,8 @@ body,
         margin-bottom: 1rem;
     }
 
-    [data-testid="stChatMessage"] {
-        max-width: 92%;
+    .chat-bubble {
+        max-width: 88%;
     }
 }
 </style>
@@ -222,9 +253,21 @@ def chat_avatar(role: str) -> str:
     return _CHAT_AVATARS.get(role, "💬")
 
 
+def chat_bubble_html(role: str, text: str) -> str:
+    """Monta um balão escapado para impedir HTML vindo da conversa."""
+    bubble_role = "user" if role == "user" else "assistant"
+    sender = "Você" if bubble_role == "user" else "Banco Ágil"
+    safe_text = escape(text).replace("\n", "<br>")
+    return (
+        f'<div class="chat-bubble chat-bubble--{bubble_role}">'
+        f'<span class="chat-bubble__sender">{sender}</span>{safe_text}</div>'
+    )
+
+
 def render_chat_message(role: str, text: str) -> None:
     """Renderiza uma mensagem no balão e avatar correspondentes."""
-    st.chat_message(role, avatar=chat_avatar(role)).write(text)
+    with st.chat_message(role, avatar=chat_avatar(role)):
+        st.markdown(chat_bubble_html(role, text), unsafe_allow_html=True)
 
 
 def build_conversation_service(settings: Settings) -> ConversationService:

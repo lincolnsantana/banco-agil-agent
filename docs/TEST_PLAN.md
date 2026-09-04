@@ -17,8 +17,8 @@ Cobertura automatizada correspondente em `tests/e2e/test_journeys.py`.
 2. Confirme o cabeçalho simples `🏦 Banco Ágil`, a tipografia Inter e o fundo
    branco no tema claro, sem sobrepor o header nativo do Streamlit.
 3. Observe a primeira mensagem antes de digitar.
-4. Envie uma mensagem e confira os balões separados com os avatares `🧑` e `🏦`
-   no desktop e no celular.
+4. Envie uma mensagem e confira os balões internos separados, com rótulos
+   `Você`/`Banco Ágil` e avatares `🧑`/`🏦`, no desktop e no celular.
 5. Alterne o tema do Streamlit para escuro e confirme que página, header nativo,
    balões, texto e campo de mensagem ficam escuros e legíveis.
 
