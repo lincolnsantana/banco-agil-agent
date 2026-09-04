@@ -26,15 +26,17 @@ mesma largura, ficam acima da entrada e a apresentação reaparece após reinici
 1. Inicie `streamlit run app.py` (ou execute os turnos via `ConversationService`).
 2. Envie `quero consultar meu limite`.
 3. Confirme a explicação de segurança e envie `11144477735`.
-4. Confirme que o CPF ainda não foi validado e envie `20/05/1990`.
+4. Confirme que o CPF foi localizado, mas que a autenticação ainda depende do
+   nascimento, e envie `20/05/1990`.
 5. Envie `qual é meu limite?`.
 
-Resultado esperado: explicação antes do pedido de CPF; pedido de nascimento em
-`DD/MM/AAAA` sem confirmar antecipadamente o CPF; confirmação conjunta dos dados;
-resposta `Seu limite atual é R$ 2.500,00...`. CPF e nascimento ficam mascarados.
+Resultado esperado: explicação antes do pedido de CPF; confirmação apenas de que
+o CPF foi localizado; pedido de nascimento em `DD/MM/AAAA`; autenticação somente
+após combinar os dados; resposta `Seu limite atual é R$ 2.500,00...`. CPF e
+nascimento ficam mascarados.
 
-Com CPF `99999999999` e nascimento `20/05/1990`, o cliente não é autenticado e
-recebe a mesma falha genérica usada para nascimento divergente.
+Os CPFs `99999999999`, `88888888888` e `77777777777` falham imediatamente, sem
+pedido de nascimento. A terceira falha encerra o atendimento cordialmente.
 
 ## CT02 — Aumento aprovado
 
@@ -94,14 +96,14 @@ extração de par de moedas. O runner mede por versão de prompt: acerto de
 roteamento/extração, chamadas LLM (zero no caminho determinístico), latência
 por caso (teto de 1.000 ms) e tamanho do system message por especialista.
 
-O `BASELINE` fixa os valores da versão atual (`global@1.3.0`, triagem `1.2.1` e
+O `BASELINE` fixa os valores da versão atual (`global@1.3.0`, triagem `1.3.0` e
 especialistas `1.3.0`). Ao mudar `PROMPTS.md`, atualize o baseline no mesmo commit e registre
 abaixo a comparação entre versões (acerto, chamadas, latência média e consumo
 em caracteres).
 
 | Versão de prompt | Dataset | Acerto | Chamadas LLM | Latência média | Consumo máx. |
 | --- | --- | --- | --- | --- | --- |
-| `global@1.3.0` + triagem `1.2.1` + especialistas `1.3.0` | `1.0.0` | 1.0 (8/8) | 0 | < 1.000 ms/caso | < 2.700 caracteres |
+| `global@1.3.0` + todos especialistas `1.3.0` | `1.0.0` | 1.0 (8/8) | 0 | < 1.000 ms/caso | < 2.700 caracteres |
 
 ## Registro de execução
 

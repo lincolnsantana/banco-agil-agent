@@ -346,23 +346,23 @@ def test_history_keeps_only_six_recent_messages(client: Client) -> None:
     state = ConversationState()
     history: tuple[BaseMessage, ...] = ()
 
-    for index in range(4):
-        turn = harness.service.handle_turn(state, history, f"mensagem {index}")
+    for text in ("mensagem zero", "mensagem um", "mensagem dois", "mensagem três"):
+        turn = harness.service.handle_turn(state, history, text)
         history = turn.history
 
     assert len(history) == 6
     assert [message.content for message in history] == [
-        "mensagem 1",
+        "mensagem um",
         (
             "Antes de continuar, precisamos validar alguns dados para proteger seu "
             "atendimento. Por favor, informe seu CPF com 11 dígitos."
         ),
-        "mensagem 2",
+        "mensagem dois",
         (
             "Antes de continuar, precisamos validar alguns dados para proteger seu "
             "atendimento. Por favor, informe seu CPF com 11 dígitos."
         ),
-        "mensagem 3",
+        "mensagem três",
         (
             "Antes de continuar, precisamos validar alguns dados para proteger seu "
             "atendimento. Por favor, informe seu CPF com 11 dígitos."

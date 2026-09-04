@@ -6,9 +6,9 @@ O Banco Ágil é um banco digital fictício cujo atendimento ao cliente é feito
 quatro especialistas internos de IA, apresentados ao cliente como uma única
 conversa contínua em Streamlit:
 
-- **Triagem**: explica a validação, autentica CPF + nascimento informado em
-  `DD/MM/AAAA` contra `clientes.csv` e direciona; encerra após a terceira falha
-  sem revelar o campo incorreto.
+- **Triagem**: explica a validação, verifica imediatamente o CPF no cadastro e
+  pede novamente quando ele é inválido. Para CPF localizado, solicita nascimento
+  em `DD/MM/AAAA` e só então autentica; encerra após a terceira falha.
 - **Crédito**: consulta o limite atual e processa pedidos de aumento
   (aprova/rejeita pela faixa de score; registra em
   `solicitacoes_aumento_limite.csv` sem alterar o limite cadastrado).
@@ -43,9 +43,10 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
 - **Prompts** (`prompts/`): um system message = global + especialista ativo +
   estado mínimo sanitizado (sem PII, < 500 caracteres); só as tools do
   especialista ativo são expostas; IDs/versões testados contra `PROMPTS.md`.
-- **Tools** (`tools/banking.py`): `authenticate_client`, `get_credit_limit`,
-  `request_limit_increase`, `update_credit_score`, `get_exchange_rate`,
-  `end_service`. Estado e serviços são injetados (`InjectedToolArg`) e ficam
+- **Tools** (`tools/banking.py`): `validate_client_cpf`, `authenticate_client`,
+  `get_credit_limit`, `request_limit_increase`, `update_credit_score`,
+  `get_exchange_rate`, `end_service`. Estado e serviços são injetados
+  (`InjectedToolArg`) e ficam
   fora do schema visível ao LLM; cada tool protegida revalida autenticação e o
   CPF vem sempre do estado confiável.
 - **Dados**: `clientes.csv`, `score_limite.csv` (faixas 0–1000 sem lacunas),

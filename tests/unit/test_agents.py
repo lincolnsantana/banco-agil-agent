@@ -30,6 +30,7 @@ from banco_agil.domain.exceptions import (
 from banco_agil.domain.models import (
     AuthenticationResult,
     Client,
+    CpfValidationResult,
     CreditInterview,
     CreditLimitResult,
     ExchangeQuote,
@@ -74,6 +75,29 @@ class FakeAuthenticationService:
     client: Client | None
     attempts: int = 0
     calls: list[tuple[str, str]] = field(default_factory=list)
+    cpf_calls: list[str] = field(default_factory=list)
+
+    def validate_cpf(
+        self,
+        state: ConversationState,
+        cpf: str,
+    ) -> CpfValidationResult:
+        """Simula a consulta antecipada do CPF sem autenticar."""
+        self.cpf_calls.append(cpf)
+        normalized = cpf.replace(".", "").replace("-", "").replace(" ", "")
+        if self.client is not None and normalized == self.client.cpf:
+            state.pending_cpf = normalized
+            return CpfValidationResult(
+                valid=True,
+                attempts=state.authentication_attempts,
+                should_end=False,
+            )
+        state.authentication_attempts += 1
+        return CpfValidationResult(
+            valid=False,
+            attempts=state.authentication_attempts,
+            should_end=state.authentication_attempts >= 3,
+        )
 
     def authenticate(
         self,
@@ -298,6 +322,22 @@ def test_triage_explains_validation_before_requesting_cpf(client: Client) -> Non
     assert "validar" in reply.casefold()
     assert "cpf" in reply.casefold()
     assert state.authenticated_client is None
+    assert state.authentication_attempts == 0
+
+
+def test_initial_request_with_value_is_not_counted_as_invalid_cpf(
+    client: Client,
+) -> None:
+    state = ConversationState()
+
+    reply = handle_triage(
+        state,
+        "Quero aumentar meu limite para 5000 reais",
+        FakeAuthenticationService(client),
+    )
+
+    assert "validar alguns dados" in reply.casefold()
+    assert state.authentication_attempts == 0
 
 
 def test_triage_third_failure_ends_without_disclosing_wrong_field() -> None:

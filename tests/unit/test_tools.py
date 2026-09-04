@@ -13,6 +13,7 @@ from banco_agil.domain.exceptions import AuthorizationError
 from banco_agil.domain.models import (
     AuthenticationResult,
     Client,
+    CpfValidationResult,
     CreditInterview,
     CreditLimitResult,
     ExchangeQuote,
@@ -27,6 +28,7 @@ from banco_agil.tools.banking import (
     get_exchange_rate,
     request_limit_increase,
     update_credit_score,
+    validate_client_cpf,
 )
 
 
@@ -36,6 +38,16 @@ class FakeAuthenticationService:
 
     result: AuthenticationResult
     calls: list[tuple[ConversationState, str, str]] = field(default_factory=list)
+    cpf_calls: list[tuple[ConversationState, str]] = field(default_factory=list)
+
+    def validate_cpf(
+        self,
+        state: ConversationState,
+        cpf: str,
+    ) -> CpfValidationResult:
+        """Registra a verificação antecipada do CPF."""
+        self.cpf_calls.append((state, cpf))
+        return CpfValidationResult(valid=True, attempts=0, should_end=False)
 
     def authenticate(
         self,
@@ -137,6 +149,7 @@ def interview() -> CreditInterview:
 
 def test_llm_schemas_hide_state_and_dependencies() -> None:
     schemas = {
+        validate_client_cpf.name: {"cpf"},
         authenticate_client.name: {"cpf", "birth_date"},
         get_credit_limit.name: set(),
         request_limit_increase.name: {"new_limit"},
@@ -146,6 +159,7 @@ def test_llm_schemas_hide_state_and_dependencies() -> None:
     }
 
     for banking_tool in (
+        validate_client_cpf,
         authenticate_client,
         get_credit_limit,
         request_limit_increase,
@@ -159,6 +173,7 @@ def test_llm_schemas_hide_state_and_dependencies() -> None:
 
 def test_tool_descriptions_are_single_short_sentences() -> None:
     expected_descriptions = {
+        "validate_client_cpf": "Confirma se o CPF informado existe no cadastro",
         "authenticate_client": "Valida CPF e nascimento informados",
         "get_credit_limit": "Consulta o limite do cliente autenticado",
         "request_limit_increase": "Registra e avalia o limite solicitado",
@@ -168,6 +183,7 @@ def test_tool_descriptions_are_single_short_sentences() -> None:
     }
 
     for banking_tool in (
+        validate_client_cpf,
         authenticate_client,
         get_credit_limit,
         request_limit_increase,
@@ -201,6 +217,20 @@ def test_authentication_tool_delegates_credentials(
 
     assert returned is result
     assert service.calls == [(state, "01234567890", "20/05/1990")]
+
+
+def test_cpf_validation_tool_does_not_require_birth_date() -> None:
+    service = FakeAuthenticationService(
+        AuthenticationResult(authenticated=False, attempts=0, should_end=False)
+    )
+    state = ConversationState()
+
+    returned = validate_client_cpf.invoke(
+        {"cpf": "01234567890", "state": state, "service": service}
+    )
+
+    assert returned.valid
+    assert service.cpf_calls == [(state, "01234567890")]
 
 
 def test_credit_tools_delegate_without_receiving_cpf(

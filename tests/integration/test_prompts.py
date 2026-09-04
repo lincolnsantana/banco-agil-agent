@@ -17,7 +17,7 @@ from banco_agil.prompts.registry import (
 from banco_agil.prompts.renderer import compact_state, render_prompt
 
 EXPECTED_TOOLS = {
-    Agent.TRIAGE: {"authenticate_client", "end_service"},
+    Agent.TRIAGE: {"validate_client_cpf", "authenticate_client", "end_service"},
     Agent.CREDIT: {
         "get_credit_limit",
         "request_limit_increase",
@@ -42,7 +42,7 @@ def test_registry_uses_documented_ids_versions_variables_and_limits() -> None:
     for agent in Agent:
         definition = PROMPT_REGISTRY.for_agent(agent)
         assert definition.prompt_id == agent.value
-        expected_version = "1.2.1" if agent is Agent.TRIAGE else "1.3.0"
+        expected_version = "1.3.0"
         assert definition.version == expected_version
         assert definition.character_limit == 1_000
         assert definition.variables == frozenset({"state"})
@@ -74,7 +74,7 @@ def test_rendering_produces_one_bounded_system_message_for_active_agent(
     specialist = PROMPT_REGISTRY.for_agent(agent)
 
     assert isinstance(rendered.system_message, SystemMessage)
-    specialist_version = "1.2.1" if agent is Agent.TRIAGE else "1.3.0"
+    specialist_version = "1.3.0"
     assert rendered.prompt_version == (
         f"global@1.3.0+{agent.value}@{specialist_version}"
     )

@@ -284,7 +284,7 @@ def test_repository_round_trips_integration_event_with_llm_fields(
             result="ok",
             duration_ms=12.5,
             model="fake-model",
-            prompt_version="global@1.3.0+triage@1.2.1",
+            prompt_version="global@1.3.0+triage@1.3.0",
             llm_calls=1,
             input_tokens=120,
             output_tokens=30,

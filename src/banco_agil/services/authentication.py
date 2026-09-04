@@ -1,10 +1,10 @@
-"""Regras de autenticacao sem revelar qual credencial falhou."""
+"""Validação antecipada de CPF e autenticação completa do cliente."""
 
 import re
 from datetime import date, datetime
 
 from banco_agil.agents.state import ConversationState
-from banco_agil.domain.models import AuthenticationResult
+from banco_agil.domain.models import AuthenticationResult, CpfValidationResult
 from banco_agil.repositories.protocols import ClientRepository
 
 MAX_AUTHENTICATION_ATTEMPTS = 3
@@ -17,6 +17,31 @@ class AuthenticationService:
         """Recebe o repositorio sem depender de sua implementacao concreta."""
         self._client_repository = client_repository
 
+    def validate_cpf(
+        self,
+        state: ConversationState,
+        cpf: str,
+    ) -> CpfValidationResult:
+        """Confirma a existência do CPF sem autenticar ou retornar o cliente."""
+        if state.authentication_attempts >= MAX_AUTHENTICATION_ATTEMPTS:
+            return self._cpf_failure_result(state)
+
+        try:
+            normalized_cpf = _normalize_cpf(cpf)
+        except ValueError:
+            return self._register_cpf_failure(state)
+
+        client = self._client_repository.find_by_cpf(normalized_cpf)
+        if client is None or client.cpf != normalized_cpf:
+            return self._register_cpf_failure(state)
+
+        state.pending_cpf = normalized_cpf
+        return CpfValidationResult(
+            valid=True,
+            attempts=state.authentication_attempts,
+            should_end=False,
+        )
+
     def authenticate(
         self,
         state: ConversationState,
@@ -25,8 +50,8 @@ class AuthenticationService:
     ) -> AuthenticationResult:
         """Valida credenciais e atualiza as tentativas da sessao.
 
-        O resultado de falha e identico para CPF inexistente, nascimento incorreto
-        ou formato invalido.
+        O resultado não expõe dados cadastrais e só autentica quando CPF e
+        nascimento correspondem ao mesmo cliente.
         """
         if state.authentication_attempts >= MAX_AUTHENTICATION_ATTEMPTS:
             return self._failure_result(state)
@@ -65,6 +90,20 @@ class AuthenticationService:
     def _failure_result(state: ConversationState) -> AuthenticationResult:
         return AuthenticationResult(
             authenticated=False,
+            attempts=state.authentication_attempts,
+            should_end=(state.authentication_attempts >= MAX_AUTHENTICATION_ATTEMPTS),
+        )
+
+    @staticmethod
+    def _register_cpf_failure(state: ConversationState) -> CpfValidationResult:
+        state.pending_cpf = None
+        state.authentication_attempts += 1
+        return AuthenticationService._cpf_failure_result(state)
+
+    @staticmethod
+    def _cpf_failure_result(state: ConversationState) -> CpfValidationResult:
+        return CpfValidationResult(
+            valid=False,
             attempts=state.authentication_attempts,
             should_end=(state.authentication_attempts >= MAX_AUTHENTICATION_ATTEMPTS),
         )

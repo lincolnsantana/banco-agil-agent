@@ -11,6 +11,7 @@ from banco_agil.domain.enums import EndReason
 from banco_agil.domain.exceptions import AuthorizationError
 from banco_agil.domain.models import (
     AuthenticationResult,
+    CpfValidationResult,
     CreditInterview,
     CreditLimitResult,
     EndServiceResult,
@@ -32,6 +33,19 @@ InjectedInterviewService = Annotated[
     SkipValidation[CreditInterviewService], InjectedToolArg
 ]
 InjectedExchangeService = Annotated[SkipValidation[ExchangeService], InjectedToolArg]
+
+
+@tool(
+    "validate_client_cpf",
+    description="Confirma se o CPF informado existe no cadastro",
+)
+def validate_client_cpf(
+    cpf: str,
+    state: InjectedState,
+    service: InjectedAuthenticationService,
+) -> CpfValidationResult:
+    """Delega a verificação cadastral do CPF sem autenticar o cliente."""
+    return service.validate_cpf(state, cpf)
 
 
 @tool(

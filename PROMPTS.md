@@ -22,7 +22,7 @@ tools. A triagem é determinística e não envia prompt ao provedor.
 | --- | --- | ---: |
 | `welcome` | `1.0.0` | 800 |
 | `global` | `1.3.0` | 1.200 |
-| `triage` | `1.2.1` | 1.000 |
+| `triage` | `1.3.0` | 1.000 |
 | `credit` | `1.3.0` | 1.000 |
 | `credit_interview` | `1.3.0` | 1.000 |
 | `exchange` | `1.3.0` | 1.000 |
@@ -61,6 +61,7 @@ devem ter uma frase; contratos completos estão no `AGENTS.md`.
 
 | Tool | Descrição curta enviada ao modelo | Especialista |
 | --- | --- | --- |
+| `validate_client_cpf` | Confirma se o CPF informado existe no cadastro | Triagem (Python) |
 | `authenticate_client` | Valida CPF e nascimento informados | Triagem (Python) |
 | `get_credit_limit` | Consulta o limite do cliente autenticado | Crédito |
 | `request_limit_increase` | Registra e avalia o limite solicitado | Crédito |
@@ -69,7 +70,8 @@ devem ter uma frase; contratos completos estão no `AGENTS.md`.
 | `end_service` | Encerra o atendimento atual | Todos |
 
 O modelo não pode simular resultado de tool.
-Como a triagem não chama o LLM, `authenticate_client` não é enviado ao provedor.
+Como a triagem não chama o LLM, `validate_client_cpf` e `authenticate_client` não
+são enviados ao provedor.
 
 ## 4.1. Prompt de apresentação
 
@@ -118,7 +120,7 @@ serviços disponíveis e não prometa aprovação nem dê aconselhamento finance
 ## 6. System prompt de Triagem
 
 ID: `triage`  
-Versão: `1.2.1`
+Versão: `1.3.0`
 
 Referência documental do fluxo determinístico; não é enviado ao LLM.
 
@@ -127,10 +129,10 @@ Escopo: autenticar e identificar intenção.
 
 Antes de pedir o CPF, explique brevemente que a validação protege o atendimento.
 Peça CPF e nascimento em DD/MM/AAAA, um por vez, sem repetir campo já coletado.
-Deixe claro que o CPF só será validado junto com o nascimento. Com ambos, use
-authenticate_client e só confirme após o resultado. Em falha, diga apenas que os
-dados não foram validados. Se a tool indicar terceira falha, seja cordial e use
-end_service.
+Valide o CPF imediatamente com validate_client_cpf. Se for inválido ou não
+cadastrado, informe e peça outro; na terceira falha, seja cordial e use
+end_service. Somente após CPF válido, peça o nascimento e use authenticate_client.
+Não confirme autenticação antes do resultado dessa combinação.
 
 Após autenticar, identifique: consultar limite, pedir aumento, consultar câmbio,
 encerrar ou desconhecida. Em dúvida, faça uma pergunta curta. Sinalize a rota

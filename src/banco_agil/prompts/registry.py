@@ -22,11 +22,12 @@ from banco_agil.tools.banking import (
     get_exchange_rate,
     request_limit_increase,
     update_credit_score,
+    validate_client_cpf,
 )
 
 _VARIABLE_PATTERN = re.compile(r"{{\s*([a-z_]+)\s*}}")
 _GLOBAL_PROMPT_VERSION = "1.3.0"
-_TRIAGE_PROMPT_VERSION = "1.2.1"
+_TRIAGE_PROMPT_VERSION = "1.3.0"
 _SPECIALIST_PROMPT_VERSION = "1.3.0"
 
 
@@ -134,7 +135,7 @@ PROMPT_REGISTRY = PromptRegistry(
         ),
     },
     agent_tools={
-        Agent.TRIAGE: (authenticate_client, end_service),
+        Agent.TRIAGE: (validate_client_cpf, authenticate_client, end_service),
         Agent.CREDIT: (get_credit_limit, request_limit_increase, end_service),
         Agent.CREDIT_INTERVIEW: (update_credit_score, end_service),
         Agent.EXCHANGE: (get_exchange_rate, end_service),

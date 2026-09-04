@@ -7,6 +7,7 @@ from decimal import Decimal
 import pytest
 
 from banco_agil.agents.state import ConversationState
+from banco_agil.domain.exceptions import RepositoryError
 from banco_agil.domain.models import Client
 from banco_agil.services.authentication import AuthenticationService
 
@@ -55,6 +56,67 @@ def test_success_authenticates_trusted_client_and_resets_attempts(
     assert state.authenticated_client is trusted_client
     assert state.authentication_attempts == 0
     assert repository.searched_cpfs == ["01234567890"]
+
+
+def test_valid_cpf_is_located_without_authenticating_client(
+    trusted_client: Client,
+) -> None:
+    repository = FakeClientRepository(trusted_client)
+    service = AuthenticationService(repository)
+    state = ConversationState()
+
+    result = service.validate_cpf(state, "012.345.678-90")
+
+    assert result.valid
+    assert not result.should_end
+    assert state.pending_cpf == "01234567890"
+    assert state.authenticated_client is None
+    assert repository.searched_cpfs == ["01234567890"]
+
+
+def test_unknown_cpf_fails_immediately_and_ends_on_third_attempt() -> None:
+    repository = FakeClientRepository(None)
+    service = AuthenticationService(repository)
+    state = ConversationState()
+
+    first = service.validate_cpf(state, "99999999999")
+    second = service.validate_cpf(state, "88888888888")
+    third = service.validate_cpf(state, "77777777777")
+
+    assert not first.valid
+    assert not second.valid
+    assert third.should_end
+    assert state.authentication_attempts == 3
+    assert state.pending_cpf is None
+
+
+def test_malformed_cpf_fails_without_querying_repository(
+    trusted_client: Client,
+) -> None:
+    repository = FakeClientRepository(trusted_client)
+    state = ConversationState()
+
+    result = AuthenticationService(repository).validate_cpf(state, "123")
+
+    assert not result.valid
+    assert result.attempts == 1
+    assert repository.searched_cpfs == []
+
+
+def test_cpf_repository_failure_does_not_consume_attempt() -> None:
+    class FailingClientRepository(FakeClientRepository):
+        def find_by_cpf(self, cpf: str) -> Client | None:
+            del cpf
+            raise RepositoryError("repository unavailable")
+
+    state = ConversationState()
+    service = AuthenticationService(FailingClientRepository(None))
+
+    with pytest.raises(RepositoryError):
+        service.validate_cpf(state, "01234567890")
+
+    assert state.authentication_attempts == 0
+    assert state.pending_cpf is None
 
 
 @pytest.mark.parametrize(

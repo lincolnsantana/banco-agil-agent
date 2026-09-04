@@ -113,6 +113,14 @@ class AuthenticationResult(DomainModel):
         return self
 
 
+class CpfValidationResult(DomainModel):
+    """Resultado da verificação cadastral do CPF sem autenticar o cliente."""
+
+    valid: bool
+    attempts: Annotated[int, Field(ge=0, le=3)]
+    should_end: bool
+
+
 class CreditLimitResult(DomainModel):
     """Resultado da consulta do limite de credito atual."""
 

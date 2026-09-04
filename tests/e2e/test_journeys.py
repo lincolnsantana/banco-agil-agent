@@ -142,10 +142,27 @@ def test_unknown_cpf_never_authenticates(tmp_path: Path) -> None:
     service = _build_service(_write_data_dir(tmp_path), FakeExchangeProvider())
     state = ConversationState()
 
-    _, replies = _run(service, state, (), ["99999999999", "20/05/1990"])
+    _, replies = _run(service, state, (), ["99999999999"])
 
     assert not state.authenticated
-    assert "não foi possível validar os dados" in replies[-1].casefold()
+    assert "cpf informado é inválido" in replies[-1].casefold()
+
+
+def test_third_unknown_cpf_ends_without_requesting_birth_date(tmp_path: Path) -> None:
+    service = _build_service(_write_data_dir(tmp_path), FakeExchangeProvider())
+    state = ConversationState()
+
+    _, replies = _run(
+        service,
+        state,
+        (),
+        ["99999999999", "88888888888", "77777777777"],
+    )
+
+    assert state.ended
+    assert state.end_reason is EndReason.AUTHENTICATION_FAILURES
+    assert "três tentativas" in replies[-1].casefold()
+    assert all("nascimento" not in reply.casefold() for reply in replies)
 
 
 def test_increase_approved_journey(tmp_path: Path) -> None:
@@ -267,9 +284,9 @@ def test_corrupted_csv_returns_controlled_reply(tmp_path: Path) -> None:
     service = _build_service(data_dir, FakeExchangeProvider())
 
     state = ConversationState()
-    _, replies = _run(service, state, (), ["01234567890", "20/05/1990"])
+    _, replies = _run(service, state, (), ["01234567890"])
 
-    assert "tente novamente mais tarde" in replies[1].casefold()
+    assert "tente novamente mais tarde" in replies[0].casefold()
 
 
 def test_missing_llm_asks_clarification(tmp_path: Path) -> None:

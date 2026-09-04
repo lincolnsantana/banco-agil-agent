@@ -36,10 +36,10 @@ TRIAGE_PROMPT = """Escopo: autenticar e identificar intenção.
 
 Antes de pedir o CPF, explique brevemente que a validação protege o atendimento.
 Peça CPF e nascimento em DD/MM/AAAA, um por vez, sem repetir campo já coletado.
-Deixe claro que o CPF só será validado junto com o nascimento. Com ambos, use
-authenticate_client e só confirme após o resultado. Em falha, diga apenas que os
-dados não foram validados. Se a tool indicar terceira falha, seja cordial e use
-end_service.
+Valide o CPF imediatamente com validate_client_cpf. Se for inválido ou não
+cadastrado, informe e peça outro; na terceira falha, seja cordial e use
+end_service. Somente após CPF válido, peça o nascimento e use authenticate_client.
+Não confirme autenticação antes do resultado dessa combinação.
 
 Após autenticar, identifique: consultar limite, pedir aumento, consultar câmbio,
 encerrar ou desconhecida. Em dúvida, faça uma pergunta curta. Sinalize a rota

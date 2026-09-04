@@ -10,9 +10,9 @@ from banco_agil.agents._shared import (
 from banco_agil.agents.state import ConversationState
 from banco_agil.domain.enums import Agent, EndReason, Intent
 from banco_agil.domain.exceptions import RepositoryError
-from banco_agil.domain.models import AuthenticationResult
+from banco_agil.domain.models import AuthenticationResult, CpfValidationResult
 from banco_agil.services.authentication import AuthenticationService
-from banco_agil.tools.banking import authenticate_client
+from banco_agil.tools.banking import authenticate_client, validate_client_cpf
 
 
 def handle_triage(
@@ -49,16 +49,32 @@ def _handle_authentication(
     service: AuthenticationService,
 ) -> str:
     if state.pending_cpf is None:
-        cpf = re.sub(r"[.\-\s]", "", user_text)
-        if not re.fullmatch(r"\d{11}", cpf):
+        if not re.fullmatch(r"[\d.\-\s]+", user_text.strip()):
             return (
                 "Antes de continuar, precisamos validar alguns dados para proteger "
                 "seu atendimento. Por favor, informe seu CPF com 11 dígitos."
             )
-        state.pending_cpf = cpf
+        try:
+            cpf_result = CpfValidationResult.model_validate(
+                validate_client_cpf.invoke(
+                    {"cpf": user_text, "state": state, "service": service}
+                )
+            )
+        except RepositoryError:
+            return "Não foi possível validar o CPF agora. Tente novamente mais tarde."
+        if cpf_result.should_end:
+            end_conversation(state, EndReason.AUTHENTICATION_FAILURES)
+            return (
+                "Não foi possível validar o CPF após três tentativas. "
+                "Atendimento encerrado."
+            )
+        if not cpf_result.valid:
+            return (
+                "O CPF informado é inválido. Digite novamente seu CPF com 11 dígitos."
+            )
         return (
-            "Recebi o CPF, mas a validação só será concluída após conferir também "
-            "a data de nascimento. Informe-a no formato DD/MM/AAAA."
+            "CPF localizado. Para concluir a autenticação, informe sua data de "
+            "nascimento no formato DD/MM/AAAA."
         )
 
     try:
