@@ -276,17 +276,33 @@ def test_triage_collects_credentials_one_at_a_time(client: Client) -> None:
     service = FakeAuthenticationService(client)
 
     cpf_reply = handle_triage(state, "012.345.678-90", service)
-    auth_reply = handle_triage(state, "1990-05-20", service)
+    auth_reply = handle_triage(state, "20/05/1990", service)
 
     assert "nascimento" in cpf_reply.casefold()
+    assert "DD/MM/AAAA" in cpf_reply
     assert "ajudar" in auth_reply.casefold()
-    assert service.calls == [("01234567890", "1990-05-20")]
+    assert service.calls == [("01234567890", "20/05/1990")]
     assert state.authenticated_client is client
+
+
+def test_triage_explains_validation_before_requesting_cpf(client: Client) -> None:
+    state = ConversationState()
+
+    reply = handle_triage(
+        state,
+        "Quero saber se posso aumentar meu limite",
+        FakeAuthenticationService(client),
+    )
+
+    assert "antes" in reply.casefold()
+    assert "validar" in reply.casefold()
+    assert "cpf" in reply.casefold()
+    assert state.authenticated_client is None
 
 
 def test_triage_third_failure_ends_without_disclosing_wrong_field() -> None:
     state = ConversationState(pending_cpf="01234567890")
-    reply = handle_triage(state, "1990-05-20", FakeAuthenticationService(None, 3))
+    reply = handle_triage(state, "20/05/1990", FakeAuthenticationService(None, 3))
 
     assert state.ended
     assert state.end_reason is EndReason.AUTHENTICATION_FAILURES
@@ -352,7 +368,7 @@ def test_authentication_repository_failure_returns_controlled_reply() -> None:
 
     reply = handle_triage(
         state,
-        "1990-05-20",
+        "20/05/1990",
         FailingAuthenticationService(None),
     )
 

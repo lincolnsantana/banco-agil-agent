@@ -32,7 +32,8 @@ _NOTICE_KEY = "notice"
 
 _CPF_FORMATTED_PATTERN = re.compile(r"\d{3}\.\d{3}\.\d{3}-\d{2}")
 _CPF_PLAIN_PATTERN = re.compile(r"\b\d{11}\b")
-_BIRTH_DATE_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+_ISO_BIRTH_DATE_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+_BR_BIRTH_DATE_PATTERN = re.compile(r"\b\d{2}/\d{2}/\d{4}\b")
 
 
 class ConversationServiceLike(Protocol):
@@ -75,7 +76,8 @@ def mask_sensitive_text(text: str) -> str:
     """Oculta CPF e data de nascimento antes de exibir na interface."""
     masked = _CPF_FORMATTED_PATTERN.sub("***", text)
     masked = _CPF_PLAIN_PATTERN.sub("***", masked)
-    return _BIRTH_DATE_PATTERN.sub("***", masked)
+    masked = _ISO_BIRTH_DATE_PATTERN.sub("***", masked)
+    return _BR_BIRTH_DATE_PATTERN.sub("***", masked)
 
 
 def history_for_display(history: Sequence[BaseMessage]) -> list[tuple[str, str]]:

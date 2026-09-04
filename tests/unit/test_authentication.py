@@ -46,7 +46,7 @@ def test_success_authenticates_trusted_client_and_resets_attempts(
     service = AuthenticationService(repository)
     state = ConversationState(authentication_attempts=2)
 
-    result = service.authenticate(state, "012.345.678-90", "1990-05-20")
+    result = service.authenticate(state, "012.345.678-90", "20/05/1990")
 
     assert result.authenticated
     assert result.client is trusted_client
@@ -60,10 +60,11 @@ def test_success_authenticates_trusted_client_and_resets_attempts(
 @pytest.mark.parametrize(
     ("cpf", "birth_date"),
     [
-        ("123", "1990-05-20"),
-        ("0123456789A", "1990-05-20"),
-        ("01234567890", "20/05/1990"),
-        ("01234567890", "2999-01-01"),
+        ("123", "20/05/1990"),
+        ("0123456789A", "20/05/1990"),
+        ("01234567890", "1990-05-20"),
+        ("01234567890", "1/05/1990"),
+        ("01234567890", "01/01/2999"),
     ],
 )
 def test_invalid_input_fails_before_repository(
@@ -91,10 +92,10 @@ def test_unknown_cpf_and_wrong_birth_date_have_same_result(
     mismatch_service = AuthenticationService(FakeClientRepository(trusted_client))
 
     unknown = unknown_service.authenticate(
-        ConversationState(), "11111111111", "1990-05-20"
+        ConversationState(), "11111111111", "20/05/1990"
     )
     mismatch = mismatch_service.authenticate(
-        ConversationState(), "01234567890", "1991-05-20"
+        ConversationState(), "01234567890", "20/05/1991"
     )
 
     assert unknown == mismatch
@@ -111,9 +112,9 @@ def test_third_consecutive_failure_signals_end(trusted_client: Client) -> None:
     service = AuthenticationService(repository)
     state = ConversationState()
 
-    first = service.authenticate(state, "01234567890", "1991-05-20")
-    second = service.authenticate(state, "01234567890", "1991-05-20")
-    third = service.authenticate(state, "01234567890", "1991-05-20")
+    first = service.authenticate(state, "01234567890", "20/05/1991")
+    second = service.authenticate(state, "01234567890", "20/05/1991")
+    third = service.authenticate(state, "01234567890", "20/05/1991")
 
     assert not first.should_end
     assert not second.should_end
@@ -129,22 +130,23 @@ def test_attempt_after_limit_does_not_query_repository(
     service = AuthenticationService(repository)
     state = ConversationState(authentication_attempts=3)
 
-    result = service.authenticate(state, "01234567890", "1990-05-20")
+    result = service.authenticate(state, "01234567890", "20/05/1990")
 
     assert result.should_end
     assert result.attempts == 3
     assert repository.searched_cpfs == []
 
 
-def test_repository_identity_is_never_built_from_user_input(
+def test_repository_identity_must_match_requested_cpf(
     trusted_client: Client,
 ) -> None:
     repository = FakeClientRepository(trusted_client)
     service = AuthenticationService(repository)
     state = ConversationState()
 
-    result = service.authenticate(state, "11111111111", "1990-05-20")
+    result = service.authenticate(state, "11111111111", "20/05/1990")
 
-    assert result.client is trusted_client
-    assert state.authenticated_client is trusted_client
-    assert state.authenticated_client.cpf == "01234567890"
+    assert not result.authenticated
+    assert result.client is None
+    assert state.authenticated_client is None
+    assert state.authentication_attempts == 1

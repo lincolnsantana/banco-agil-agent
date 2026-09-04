@@ -353,11 +353,20 @@ def test_history_keeps_only_six_recent_messages(client: Client) -> None:
     assert len(history) == 6
     assert [message.content for message in history] == [
         "mensagem 1",
-        "Olá! Para começar, informe seu CPF com 11 dígitos.",
+        (
+            "Antes de continuar, precisamos validar alguns dados para proteger seu "
+            "atendimento. Por favor, informe seu CPF com 11 dígitos."
+        ),
         "mensagem 2",
-        "Olá! Para começar, informe seu CPF com 11 dígitos.",
+        (
+            "Antes de continuar, precisamos validar alguns dados para proteger seu "
+            "atendimento. Por favor, informe seu CPF com 11 dígitos."
+        ),
         "mensagem 3",
-        "Olá! Para começar, informe seu CPF com 11 dígitos.",
+        (
+            "Antes de continuar, precisamos validar alguns dados para proteger seu "
+            "atendimento. Por favor, informe seu CPF com 11 dígitos."
+        ),
     ]
 
 

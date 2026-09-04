@@ -119,7 +119,7 @@ def _run(
 def _authenticate(
     service: ConversationService, state: ConversationState
 ) -> tuple[BaseMessage, ...]:
-    history, _ = _run(service, state, (), ["01234567890", "1990-05-20"])
+    history, _ = _run(service, state, (), ["01234567890", "20/05/1990"])
     assert state.authenticated
     return history
 
@@ -129,13 +129,23 @@ def test_limit_consult_journey(tmp_path: Path) -> None:
     state = ConversationState()
 
     history, replies = _run(
-        service, state, (), ["01234567890", "1990-05-20", "qual é meu limite?"]
+        service, state, (), ["01234567890", "20/05/1990", "qual é meu limite?"]
     )
 
     assert "nascimento" in replies[0].casefold()
     assert "ajudar" in replies[1].casefold()
     assert "2.500,00" in replies[2]
     assert len(history) == 6
+
+
+def test_unknown_cpf_never_authenticates(tmp_path: Path) -> None:
+    service = _build_service(_write_data_dir(tmp_path), FakeExchangeProvider())
+    state = ConversationState()
+
+    _, replies = _run(service, state, (), ["99999999999", "20/05/1990"])
+
+    assert not state.authenticated
+    assert "não foi possível validar os dados" in replies[-1].casefold()
 
 
 def test_increase_approved_journey(tmp_path: Path) -> None:
@@ -221,11 +231,11 @@ def test_three_failures_end_session(tmp_path: Path) -> None:
         (),
         [
             "01234567890",
-            "2000-01-01",
+            "01/01/2000",
             "01234567890",
-            "2000-01-01",
+            "01/01/2000",
             "01234567890",
-            "2000-01-01",
+            "01/01/2000",
         ],
     )
 
@@ -257,7 +267,7 @@ def test_corrupted_csv_returns_controlled_reply(tmp_path: Path) -> None:
     service = _build_service(data_dir, FakeExchangeProvider())
 
     state = ConversationState()
-    _, replies = _run(service, state, (), ["01234567890", "1990-05-20"])
+    _, replies = _run(service, state, (), ["01234567890", "20/05/1990"])
 
     assert "tente novamente mais tarde" in replies[1].casefold()
 

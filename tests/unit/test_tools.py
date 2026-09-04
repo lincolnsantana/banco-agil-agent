@@ -193,14 +193,14 @@ def test_authentication_tool_delegates_credentials(
     returned = authenticate_client.invoke(
         {
             "cpf": "01234567890",
-            "birth_date": "1990-05-20",
+            "birth_date": "20/05/1990",
             "state": state,
             "service": service,
         }
     )
 
     assert returned is result
-    assert service.calls == [(state, "01234567890", "1990-05-20")]
+    assert service.calls == [(state, "01234567890", "20/05/1990")]
 
 
 def test_credit_tools_delegate_without_receiving_cpf(

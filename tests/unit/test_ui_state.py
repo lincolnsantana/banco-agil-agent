@@ -178,11 +178,15 @@ def test_end_conversation_routes_through_service() -> None:
 
 
 def test_mask_sensitive_text_hides_cpf_and_birth_date() -> None:
-    masked = mask_sensitive_text("meu CPF 012.345.678-90 nasceu em 1990-05-20")
+    masked = mask_sensitive_text("meu CPF 012.345.678-90 nasceu em 20/05/1990")
 
     assert "012.345.678-90" not in masked
-    assert "1990-05-20" not in masked
+    assert "20/05/1990" not in masked
     assert "***" in masked
+
+
+def test_mask_sensitive_text_also_hides_internal_iso_date() -> None:
+    assert "1990-05-20" not in mask_sensitive_text("nascimento 1990-05-20")
 
 
 def test_mask_sensitive_text_hides_plain_cpf() -> None:
@@ -254,7 +258,7 @@ def test_build_service_uses_fictitious_client_csv(tmp_path: Path) -> None:
     service = build_conversation_service(settings)
     state = ConversationState()
     service.handle_turn(state, (), "01234567890")
-    turn = service.handle_turn(state, (), "1990-05-20")
+    turn = service.handle_turn(state, (), "20/05/1990")
 
     client = state.authenticated_client
     assert client is not None

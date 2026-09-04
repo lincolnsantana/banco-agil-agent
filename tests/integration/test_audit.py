@@ -29,7 +29,7 @@ from banco_agil.services.exchange import ExchangeService
 
 OutputModel = TypeVar("OutputModel", bound=BaseModel)
 FAKE_CPF = "01234567890"
-FAKE_BIRTH_DATE = "1990-05-20"
+FAKE_BIRTH_DATE = "20/05/1990"
 
 
 @dataclass
@@ -284,7 +284,7 @@ def test_repository_round_trips_integration_event_with_llm_fields(
             result="ok",
             duration_ms=12.5,
             model="fake-model",
-            prompt_version="global@1.3.0+triage@1.2.0",
+            prompt_version="global@1.3.0+triage@1.2.1",
             llm_calls=1,
             input_tokens=120,
             output_tokens=30,

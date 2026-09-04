@@ -6,8 +6,9 @@ O Banco Ágil é um banco digital fictício cujo atendimento ao cliente é feito
 quatro especialistas internos de IA, apresentados ao cliente como uma única
 conversa contínua em Streamlit:
 
-- **Triagem**: recepciona, autentica (CPF + nascimento em `clientes.csv`) e
-  direciona; encerra após a terceira falha sem revelar o campo incorreto.
+- **Triagem**: explica a validação, autentica CPF + nascimento informado em
+  `DD/MM/AAAA` contra `clientes.csv` e direciona; encerra após a terceira falha
+  sem revelar o campo incorreto.
 - **Crédito**: consulta o limite atual e processa pedidos de aumento
   (aprova/rejeita pela faixa de score; registra em
   `solicitacoes_aumento_limite.csv` sem alterar o limite cadastrado).
@@ -119,7 +120,7 @@ cp .env.example .env
 # edite .env e preencha BANCO_AGIL_GROQ_API_KEY para ativar o Groq
 ```
 
-Interface (dados fictícios: CPF `11144477735`, nascimento `1990-05-20`):
+Interface (dados fictícios: CPF `11144477735`, nascimento `20/05/1990`):
 
 ```bash
 streamlit run app.py

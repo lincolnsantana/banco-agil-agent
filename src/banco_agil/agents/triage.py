@@ -1,7 +1,6 @@
 """Nó de triagem integralmente determinístico."""
 
 import re
-from datetime import date
 
 from banco_agil.agents._shared import (
     end_conversation,
@@ -52,17 +51,15 @@ def _handle_authentication(
     if state.pending_cpf is None:
         cpf = re.sub(r"[.\-\s]", "", user_text)
         if not re.fullmatch(r"\d{11}", cpf):
-            return "Olá! Para começar, informe seu CPF com 11 dígitos."
+            return (
+                "Antes de continuar, precisamos validar alguns dados para proteger "
+                "seu atendimento. Por favor, informe seu CPF com 11 dígitos."
+            )
         state.pending_cpf = cpf
-        return "Agora informe sua data de nascimento no formato AAAA-MM-DD."
-
-    try:
-        birth_date = date.fromisoformat(user_text.strip())
-        if birth_date > date.today():
-            raise ValueError
-        state.pending_birth_date = birth_date
-    except ValueError:
-        state.pending_birth_date = None
+        return (
+            "Recebi o CPF, mas a validação só será concluída após conferir também "
+            "a data de nascimento. Informe-a no formato DD/MM/AAAA."
+        )
 
     try:
         result = AuthenticationResult.model_validate(
@@ -88,7 +85,10 @@ def _handle_authentication(
             "Não foi possível validar os dados após três tentativas. "
             "Atendimento encerrado."
         )
-    return "Não foi possível validar os dados. Tente novamente informando seu CPF."
+    return (
+        "Não foi possível validar os dados informados. Vamos tentar novamente: "
+        "informe seu CPF com 11 dígitos."
+    )
 
 
 def _deterministic_intent(user_text: str) -> Intent | None:

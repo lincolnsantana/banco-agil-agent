@@ -24,12 +24,17 @@ mesma largura, ficam acima da entrada e a apresentação reaparece após reinici
 ## CT01 — Autenticação e consulta de limite
 
 1. Inicie `streamlit run app.py` (ou execute os turnos via `ConversationService`).
-2. Envie `11144477735`.
-3. Envie `1990-05-20`.
-4. Envie `qual é meu limite?`.
+2. Envie `quero consultar meu limite`.
+3. Confirme a explicação de segurança e envie `11144477735`.
+4. Confirme que o CPF ainda não foi validado e envie `20/05/1990`.
+5. Envie `qual é meu limite?`.
 
-Resultado esperado: pedido de nascimento; confirmação dos dados; resposta
-`Seu limite atual é R$ 2.500,00...`. O CPF digitado aparece mascarado (`***`).
+Resultado esperado: explicação antes do pedido de CPF; pedido de nascimento em
+`DD/MM/AAAA` sem confirmar antecipadamente o CPF; confirmação conjunta dos dados;
+resposta `Seu limite atual é R$ 2.500,00...`. CPF e nascimento ficam mascarados.
+
+Com CPF `99999999999` e nascimento `20/05/1990`, o cliente não é autenticado e
+recebe a mesma falha genérica usada para nascimento divergente.
 
 ## CT02 — Aumento aprovado
 
@@ -65,7 +70,7 @@ nenhum valor inventado e sem detalhe técnico.
 
 ## CT05 — Três falhas e encerramento
 
-1. Envie `01234567890` e `2000-01-01` três vezes (reinformando o CPF a cada vez).
+1. Envie `01234567890` e `01/01/2000` três vezes (reinformando o CPF a cada vez).
 2. Em outra sessão autenticada, envie `encerrar` em cada especialista.
 
 Resultado esperado: após a terceira falha, encerramento cordial sem revelar qual
@@ -89,14 +94,14 @@ extração de par de moedas. O runner mede por versão de prompt: acerto de
 roteamento/extração, chamadas LLM (zero no caminho determinístico), latência
 por caso (teto de 1.000 ms) e tamanho do system message por especialista.
 
-O `BASELINE` fixa os valores da versão atual (`global@1.3.0`, triagem `1.2.0` e
+O `BASELINE` fixa os valores da versão atual (`global@1.3.0`, triagem `1.2.1` e
 especialistas `1.3.0`). Ao mudar `PROMPTS.md`, atualize o baseline no mesmo commit e registre
 abaixo a comparação entre versões (acerto, chamadas, latência média e consumo
 em caracteres).
 
 | Versão de prompt | Dataset | Acerto | Chamadas LLM | Latência média | Consumo máx. |
 | --- | --- | --- | --- | --- | --- |
-| `global@1.3.0` + triagem `1.2.0` + especialistas `1.3.0` | `1.0.0` | 1.0 (8/8) | 0 | < 1.000 ms/caso | < 2.700 caracteres |
+| `global@1.3.0` + triagem `1.2.1` + especialistas `1.3.0` | `1.0.0` | 1.0 (8/8) | 0 | < 1.000 ms/caso | < 2.700 caracteres |
 
 ## Registro de execução
 

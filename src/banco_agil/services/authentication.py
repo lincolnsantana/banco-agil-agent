@@ -1,7 +1,7 @@
 """Regras de autenticacao sem revelar qual credencial falhou."""
 
 import re
-from datetime import date
+from datetime import date, datetime
 
 from banco_agil.agents.state import ConversationState
 from banco_agil.domain.models import AuthenticationResult
@@ -38,7 +38,11 @@ class AuthenticationService:
             return self._register_failure(state)
 
         client = self._client_repository.find_by_cpf(normalized_cpf)
-        if client is None or client.birth_date != parsed_birth_date:
+        if (
+            client is None
+            or client.cpf != normalized_cpf
+            or client.birth_date != parsed_birth_date
+        ):
             return self._register_failure(state)
 
         state.authenticated_client = client
@@ -75,7 +79,9 @@ def _normalize_cpf(cpf: str) -> str:
 
 def _parse_birth_date(value: str) -> date:
     normalized = value.strip()
-    parsed = date.fromisoformat(normalized)
-    if parsed.isoformat() != normalized or parsed > date.today():
+    if not re.fullmatch(r"\d{2}/\d{2}/\d{4}", normalized):
+        raise ValueError("invalid birth date")
+    parsed = datetime.strptime(normalized, "%d/%m/%Y").date()
+    if parsed > date.today():
         raise ValueError("invalid birth date")
     return parsed

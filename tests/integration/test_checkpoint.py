@@ -108,7 +108,7 @@ def test_restart_recovers_authenticated_session(tmp_path: Path) -> None:
     service = _service(store)
     state = ConversationState()
     history: tuple[BaseMessage, ...] = ()
-    for text in ("01234567890", "1990-05-20"):
+    for text in ("01234567890", "20/05/1990"):
         turn = service.handle_turn(state, history, text, session_id="sessao-1")
         history = turn.history
     assert state.authenticated
