@@ -1,5 +1,20 @@
+# O Streamlit nao expoe variaveis CSS do tema, entao cor de texto e de borda
+# precisam vir daqui: sao elas que alimentam os proprios componentes.
+# radii.default governa o quadro do campo de mensagem; radii.button, os botoes.
+[theme]
+baseRadius = "1.25rem"
+buttonRadius = "full"
+
 [theme.light]
 primaryColor = "#0B5CAD"
+textColor = "#000000"
+borderColor = "#3F4652"
+baseRadius = "1.25rem"
+buttonRadius = "full"
 
 [theme.dark]
 primaryColor = "#0B5CAD"
+textColor = "#FFFFFF"
+borderColor = "#6B7280"
+baseRadius = "1.25rem"
+buttonRadius = "full"

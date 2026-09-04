@@ -89,18 +89,23 @@ _UI_STYLES = """
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-    --agil-surface: var(--background-color);
-    --agil-surface-muted: var(--secondary-background-color);
-    --agil-text: var(--text-color);
-    --agil-accent: var(--primary-color);
-    --agil-border: color-mix(in srgb, var(--text-color) 18%, transparent);
-    --agil-muted: color-mix(in srgb, var(--text-color) 68%, transparent);
-    --agil-shadow: color-mix(in srgb, var(--text-color) 10%, transparent);
+    /* O Streamlit nao expoe variaveis CSS do tema: var(--text-color) e
+       companhia nao existem e invalidam a regra inteira. As cores neutras
+       saem de currentColor, que segue theme.textColor do config.toml
+       (branco no modo escuro, preto no claro); as de marca sao fixas. */
+    --agil-accent: #0b5cad;
     --agil-assistant-bubble: #374151;
     --agil-assistant-border: #64748b;
     --agil-user-bubble: #0b5cad;
     --agil-user-border: #60a5fa;
     --agil-ease: cubic-bezier(0.16, 1, 0.3, 1);
+    --agil-control-radius: 999px;
+    --agil-field-radius: 26px;
+    --agil-border: color-mix(in srgb, currentColor 22%, transparent);
+    --agil-muted: color-mix(in srgb, currentColor 65%, transparent);
+    /* Sombra fixa: currentColor deixaria um brilho branco no modo escuro. */
+    --agil-shadow: rgba(0, 0, 0, 0.28);
+    --agil-tint: color-mix(in srgb, currentColor 8%, transparent);
 }
 
 html,
@@ -108,13 +113,6 @@ body,
 [data-testid="stAppViewContainer"],
 [data-testid="stAppViewContainer"] * {
     font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-
-[data-testid="stAppViewContainer"],
-[data-testid="stMain"],
-[data-testid="stHeader"],
-[data-testid="stBottom"] {
-    background: var(--agil-surface);
 }
 
 [data-testid="stMainBlockContainer"] {
@@ -130,7 +128,6 @@ body,
 
 .page-heading__title {
     margin: 0;
-    color: var(--agil-text);
     font-size: clamp(1.55rem, 4vw, 2rem);
     font-weight: 700;
     letter-spacing: -0.035em;
@@ -164,7 +161,7 @@ body,
     place-items: center;
     border: 1px solid var(--agil-border);
     border-radius: 50%;
-    background: var(--agil-surface-muted);
+    background: var(--agil-tint);
     font-size: 1.15rem;
     line-height: 1;
     box-shadow: 0 2px 8px var(--agil-shadow);
@@ -172,7 +169,7 @@ body,
 
 .chat-row--user .chat-avatar {
     border-color: color-mix(in srgb, var(--agil-accent) 48%, var(--agil-border));
-    background: color-mix(in srgb, var(--agil-accent) 14%, var(--agil-surface));
+    background: color-mix(in srgb, var(--agil-accent) 14%, transparent);
 }
 
 .chat-bubble {
@@ -203,20 +200,21 @@ body,
     background: var(--agil-user-bubble);
 }
 
-[data-testid="stChatInput"] {
-    border-color: var(--agil-border);
-    border-radius: 16px;
-    color: var(--agil-text);
-    background: var(--agil-surface);
+/* O elemento com data-testid="stChatInput" e apenas um wrapper de
+   posicionamento: quem desenha borda, fundo e raio e o div filho direto.
+   Estilizar o wrapper nao produz efeito visivel algum. */
+[data-testid="stChatInput"] > div {
+    border-radius: var(--agil-field-radius) !important;
     box-shadow: 0 8px 24px var(--agil-shadow);
 }
 
-[data-testid="stChatInput"] textarea {
+[data-testid="stChatInput"] textarea,
+[data-testid="stChatInputTextArea"] {
     font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: transparent;
 }
 
-[data-testid="stChatInput"]:focus-within,
-[data-testid="stChatInput"] [data-baseweb="textarea"]:focus-within {
+[data-testid="stChatInput"] > div:focus-within {
     border-color: var(--agil-user-bubble) !important;
     box-shadow: 0 0 0 1px var(--agil-user-bubble),
         0 8px 24px var(--agil-shadow) !important;
@@ -277,39 +275,17 @@ body,
 }
 
 .landing-hero {
-    margin: 0 auto 1.6rem;
+    margin: 0 auto 1.8rem;
     text-align: center;
     animation: agil-rise 560ms var(--agil-ease) both;
 }
 
-.landing-hero__badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.32rem 0.85rem;
-    border: 1px solid var(--agil-border);
-    border-radius: 999px;
-    color: var(--agil-muted);
-    font-size: 0.78rem;
-    font-weight: 500;
-}
-
 .landing-hero__title {
-    margin: 1rem 0 0;
-    color: var(--agil-text);
+    margin: 0;
     font-size: clamp(1.8rem, 5vw, 2.6rem);
     font-weight: 600;
     letter-spacing: -0.04em;
     line-height: 1.12;
-}
-
-.landing-hero__subtitle {
-    margin: 0.8rem auto 0;
-    max-width: 34rem;
-    color: var(--agil-muted);
-    font-size: 0.95rem;
-    font-weight: 400;
-    line-height: 1.55;
 }
 
 .st-key-landing_input {
@@ -323,19 +299,13 @@ body,
 
 .st-key-quick_actions button {
     min-height: 46px;
-    border: 1px solid var(--agil-border);
-    border-radius: 999px;
-    background: var(--agil-surface-muted);
-    color: var(--agil-text);
+    border-radius: var(--agil-control-radius) !important;
     font-size: 0.86rem;
     font-weight: 500;
-    transition: transform 160ms ease, border-color 160ms ease,
-        background 160ms ease;
+    transition: transform 160ms ease;
 }
 
 .st-key-quick_actions button:hover {
-    border-color: var(--agil-user-border);
-    background: color-mix(in srgb, var(--agil-accent) 14%, var(--agil-surface));
     transform: translateY(-1px);
 }
 
@@ -345,14 +315,6 @@ body,
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--agil-accent) 45%, transparent);
 }
 
-.landing-status {
-    margin: 1.4rem 0 0;
-    color: var(--agil-muted);
-    font-size: 0.78rem;
-    text-align: center;
-    animation: agil-rise 560ms var(--agil-ease) 240ms both;
-}
-
 /* ------------------------------- Tela chat ------------------------------ */
 
 .st-key-chat_view {
@@ -360,17 +322,9 @@ body,
 }
 
 .st-key-restart_chat button {
-    border: 1px solid var(--agil-border);
-    border-radius: 999px;
-    background: transparent;
-    color: var(--agil-muted);
+    border-radius: var(--agil-control-radius) !important;
     font-size: 0.8rem;
     font-weight: 500;
-}
-
-.st-key-restart_chat button:hover {
-    border-color: var(--agil-user-border);
-    color: var(--agil-text);
 }
 
 @keyframes agil-view-in {
@@ -438,7 +392,6 @@ body,
     .st-key-quick_actions,
     .st-key-chat_view,
     .landing-hero,
-    .landing-status,
     .typing-indicator__dot {
         animation: none !important;
     }
@@ -458,12 +411,7 @@ _LANDING_EXIT_STYLE = """
 
 _LANDING_HERO = """
 <section class="landing-hero">
-    <span class="landing-hero__badge">🏦 Banco Ágil</span>
     <h1 class="landing-hero__title">Como posso ajudar você hoje?</h1>
-    <p class="landing-hero__subtitle">
-        Consulte seu limite, solicite aumento de crédito, faça a entrevista de
-        atualização e acompanhe as cotações de moedas.
-    </p>
 </section>
 """
 
@@ -605,11 +553,6 @@ def chat_bubble_html(role: str, text: str) -> str:
     )
 
 
-def landing_status_html(status_message: str) -> str:
-    """Monta o rodape escapado com o modo conversacional da tela inicial."""
-    return f'<p class="landing-status">{escape(status_message)}</p>'
-
-
 def typing_indicator_html() -> str:
     """Retorna o indicador acessível de resposta em andamento."""
     return _TYPING_INDICATOR
@@ -748,10 +691,7 @@ def _render_quick_actions() -> str | None:
     return selected
 
 
-def _render_landing(
-    session: MutableMapping[str, object],
-    settings: Settings,
-) -> None:
+def _render_landing(session: MutableMapping[str, object]) -> None:
     """Mostra a apresentação inicial e abre o chat na primeira interação."""
     with st.container(key="landing"):
         st.markdown(_LANDING_HERO, unsafe_allow_html=True)
@@ -764,10 +704,6 @@ def _render_landing(
             )
         with st.container(key="quick_actions"):
             chosen = _render_quick_actions()
-        st.markdown(
-            landing_status_html(llm_status_message(settings)),
-            unsafe_allow_html=True,
-        )
 
     requested = chosen or (typed if isinstance(typed, str) else "")
     if start_chat(session, requested):
@@ -853,7 +789,7 @@ def main() -> None:
         init_session(session)
 
     if current_view(session) == LANDING_VIEW:
-        _render_landing(session, settings)
+        _render_landing(session)
         return
     _render_chat(session, settings, service, llm)
 
