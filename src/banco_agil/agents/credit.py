@@ -45,11 +45,17 @@ def handle_credit(
         )
 
     if state.intent is not Intent.LIMIT_INCREASE:
-        return "Você deseja consultar o limite atual ou solicitar um aumento?"
+        return (
+            "Posso consultar seu limite atual ou analisar um pedido de aumento. "
+            "Qual dessas opções você prefere?"
+        )
 
     requested_limit = _parse_money(user_text)
     if requested_limit is None:
-        return "Informe o novo limite total desejado, por exemplo R$ 4.000,00."
+        return (
+            "Claro, posso analisar o aumento com você. Qual é o limite total que "
+            "gostaria de ter? Por exemplo: R$ 4.000,00."
+        )
     return _request_increase(state, service, requested_limit)
 
 
@@ -69,7 +75,10 @@ def _request_increase(
             )
         )
     except DomainError:
-        return "O novo limite deve ser maior que o atual. Informe outro valor total."
+        return (
+            "Para solicitar um aumento, o valor precisa ser maior que seu limite "
+            "atual. Qual limite total você gostaria de analisar?"
+        )
     except RepositoryError:
         return "Não foi possível processar a solicitação agora. Tente novamente."
 
@@ -77,16 +86,19 @@ def _request_increase(
     if result.status is CreditRequestStatus.REJECTED:
         state.active_agent = Agent.CREDIT_INTERVIEW
         return (
-            "A solicitação foi rejeitada para o score atual. Deseja realizar uma "
-            "entrevista de crédito? Ela permite nova análise, sem garantia de "
-            "aprovação."
+            f"Analisei seu pedido de limite total de R$ "
+            f"{format_money(result.requested_limit)}, mas ele não pôde ser aprovado "
+            "com o score atual. Se quiser, podemos fazer uma entrevista de crédito "
+            "para atualizar o score e realizar uma nova análise, sem garantia de "
+            "aprovação. Deseja continuar?"
         )
 
     state.requested_limit = None
     state.intent = Intent.UNKNOWN
     state.active_agent = Agent.TRIAGE
     return (
-        "Sua solicitação foi aprovada. O pedido foi registrado, mas o limite "
+        f"Boa notícia: seu pedido de limite total de R$ "
+        f"{format_money(result.requested_limit)} foi aprovado e registrado. O limite "
         "cadastrado ainda não foi alterado. Posso ajudar em algo mais?"
     )
 

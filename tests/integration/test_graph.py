@@ -258,7 +258,7 @@ def test_interview_completion_reanalyzes_credit_in_same_turn(client: Client) -> 
 
     turn = harness.service.handle_turn(state, (), "não")
 
-    assert "aprovada" in turn.reply.casefold()
+    assert "aprovado" in turn.reply.casefold()
     assert harness.clients.updated_scores
     assert harness.requests.requests[0].requested_limit == Decimal("4000.00")
     assert harness.requests.requests[0].status is CreditRequestStatus.APPROVED

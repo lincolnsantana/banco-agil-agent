@@ -400,6 +400,8 @@ def test_rejected_increase_offers_interview_without_promise(client: Client) -> N
 
     assert service.requested_limits == [Decimal("4000.00")]
     assert state.active_agent is Agent.CREDIT_INTERVIEW
+    assert "4.000,00" in reply
+    assert "não pôde ser aprovado" in reply.casefold()
     assert "entrevista" in reply.casefold()
     assert "aprovação garantida" not in reply.casefold()
 
@@ -418,7 +420,25 @@ def test_credit_reanalysis_reuses_requested_limit(client: Client) -> None:
 
     assert service.requested_limits == [Decimal("4000.00")]
     assert not state.credit_reanalysis_pending
-    assert "aprovada" in reply.casefold()
+    assert "4.000,00" in reply
+    assert "aprovado" in reply.casefold()
+
+
+def test_credit_asks_for_desired_total_with_context(client: Client) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT,
+        intent=Intent.LIMIT_INCREASE,
+    )
+
+    reply = handle_credit(
+        state,
+        "quero aumentar meu limite",
+        FakeCreditService(_increase_result(CreditRequestStatus.APPROVED)),
+    )
+
+    assert "posso analisar" in reply.casefold()
+    assert "limite total" in reply.casefold()
 
 
 def test_credit_repository_failure_returns_controlled_reply(client: Client) -> None:
@@ -682,4 +702,4 @@ def test_end_parser_does_not_stop_an_unfinished_credit_request(client: Client) -
     )
 
     assert not state.ended
-    assert "novo limite" in reply.casefold()
+    assert "limite total" in reply.casefold()

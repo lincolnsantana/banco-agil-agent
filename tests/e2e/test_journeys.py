@@ -146,8 +146,8 @@ def test_increase_approved_journey(tmp_path: Path) -> None:
 
     _, replies = _run(service, state, history, ["quero aumentar meu limite", "4000"])
 
-    assert "novo limite" in replies[0].casefold()
-    assert "aprovada" in replies[1].casefold()
+    assert "limite total" in replies[0].casefold()
+    assert "aprovado" in replies[1].casefold()
     requests = CreditRequestCsvRepository(
         data_dir / "solicitacoes_aumento_limite.csv"
     ).list_all()
@@ -164,7 +164,7 @@ def test_rejection_interview_and_reanalysis_journey(tmp_path: Path) -> None:
     history = _authenticate(service, state)
 
     history, replies = _run(service, state, history, ["quero aumentar", "9000"])
-    assert "rejeitada" in replies[1].casefold()
+    assert "não pôde ser aprovado" in replies[1].casefold()
     assert "entrevista" in replies[1].casefold()
 
     history, replies = _run(
@@ -174,7 +174,7 @@ def test_rejection_interview_and_reanalysis_journey(tmp_path: Path) -> None:
         ["sim", "20000", "formal", "1000", "0", "não"],
     )
     assert "renda mensal" in replies[0].casefold()
-    assert "aprovada" in replies[-1].casefold()
+    assert "aprovado" in replies[-1].casefold()
 
     clients = ClientCsvRepository(data_dir / "clientes.csv")
     assert clients.find_by_cpf("01234567890") is not None
