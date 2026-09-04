@@ -96,9 +96,7 @@ _UI_STYLES = """
        (branco no modo escuro, preto no claro); as de marca sao fixas. */
     --agil-accent: #0b5cad;
     --agil-assistant-bubble: #374151;
-    --agil-assistant-border: #64748b;
     --agil-user-bubble: #0b5cad;
-    --agil-user-border: #60a5fa;
     --agil-ease: cubic-bezier(0.16, 1, 0.3, 1);
     --agil-control-radius: 999px;
     --agil-field-radius: 26px;
@@ -178,7 +176,6 @@ body,
     width: fit-content;
     max-width: min(76%, 650px);
     padding: 0.85rem 1.05rem;
-    border: 2px solid var(--agil-border);
     border-radius: 17px;
     color: #ffffff;
     font-size: 0.94rem;
@@ -189,14 +186,12 @@ body,
 
 .chat-bubble--assistant {
     margin-right: auto;
-    border-color: var(--agil-assistant-border);
     border-top-left-radius: 5px;
     background: var(--agil-assistant-bubble);
 }
 
 .chat-bubble--user {
     margin-left: auto;
-    border-color: var(--agil-user-border);
     border-top-right-radius: 5px;
     background: var(--agil-user-bubble);
 }
@@ -233,7 +228,6 @@ body,
     gap: 0.32rem;
     min-height: 42px;
     padding: 0.65rem 0.9rem;
-    border: 2px solid var(--agil-assistant-border);
     border-radius: 17px;
     background: var(--agil-assistant-bubble);
     box-shadow: 0 5px 18px var(--agil-shadow);
