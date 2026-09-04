@@ -284,9 +284,27 @@ def test_history_for_display_never_exposes_raw_cpf() -> None:
     assert "01234567890" not in displayed[0][1]
 
 
-def test_chat_avatars_use_person_and_bank_emojis() -> None:
-    assert chat_avatar("user") == "🧑"
+def test_brand_heading_lives_only_on_the_landing_screen() -> None:
+    import app as ui
+
+    # A marca e a acolhida: o chat abre limpo, sem repetir cabeçalho.
+    # O texto do subtítulo é vitrine; o contrato é o elemento existir.
+    assert "Banco Ágil" in ui._LANDING_HERO
+    assert 'class="landing-hero__subtitle"' in ui._LANDING_HERO
+    assert not hasattr(ui, "_PAGE_HEADING")
+
+
+def test_landing_hero_is_emitted_as_a_single_html_line() -> None:
+    import app as ui
+
+    # Quebra dentro do <p> ja colou palavras e confundiu o markdown.
+    assert "\n" not in ui._LANDING_HERO.strip()
+
+
+def test_chat_avatars_separate_the_bank_from_the_client() -> None:
+    # O emoji do cliente e escolha de vitrine; o contrato e serem distintos.
     assert chat_avatar("assistant") == "🏦"
+    assert chat_avatar("user") not in {"", chat_avatar("assistant")}
     assert chat_avatar("unknown") == "💬"
 
 
@@ -296,7 +314,7 @@ def test_chat_bubbles_identify_roles_and_escape_content() -> None:
 
     assert "chat-bubble--user" in user_bubble
     assert "chat-row--user" in user_bubble
-    assert "🧑" in user_bubble
+    assert chat_avatar("user") in user_bubble
     assert "<script>" not in user_bubble
     assert "&lt;script&gt;" in user_bubble
     assert "chat-bubble--assistant" in assistant_bubble

@@ -43,7 +43,7 @@ CHAT_VIEW = "chat"
 _TRANSITION_SECONDS = 0.28
 _QUICK_ACTION_COLUMNS = 4
 
-_CHAT_AVATARS = {"assistant": "🏦", "user": "🧑"}
+_CHAT_AVATARS = {"assistant": "🏦", "user": "👤"}
 
 
 @dataclass(frozen=True)
@@ -87,7 +87,7 @@ _QUICK_ACTIONS = (
 
 _UI_STYLES = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 :root {
     /* O Streamlit nao expoe variaveis CSS do tema: var(--text-color) e
@@ -105,6 +105,8 @@ _UI_STYLES = """
     /* Sombra fixa: currentColor deixaria um brilho branco no modo escuro. */
     --agil-shadow: rgba(0, 0, 0, 0.28);
     --agil-tint: color-mix(in srgb, currentColor 8%, transparent);
+    --agil-control-fill: color-mix(in srgb, currentColor 13%, transparent);
+    --agil-control-fill-hover: color-mix(in srgb, currentColor 20%, transparent);
 }
 
 html,
@@ -118,26 +120,6 @@ body,
     max-width: 880px;
     padding-top: 1.25rem;
     padding-bottom: 7rem;
-}
-
-.page-heading {
-    margin: 0 0 1.5rem;
-    padding: 0.25rem 0;
-}
-
-.page-heading__title {
-    margin: 0;
-    font-size: clamp(1.55rem, 4vw, 2rem);
-    font-weight: 700;
-    letter-spacing: -0.035em;
-    line-height: 1.15;
-}
-
-.page-heading__subtitle {
-    margin: 0.35rem 0 0;
-    color: var(--agil-muted);
-    font-size: 0.9rem;
-    font-weight: 500;
 }
 
 .chat-row {
@@ -275,12 +257,21 @@ body,
     animation: agil-rise 560ms var(--agil-ease) both;
 }
 
-.landing-hero__title {
+.landing-hero__brand {
     margin: 0;
-    font-size: clamp(1.8rem, 5vw, 2.6rem);
-    font-weight: 400;
-    letter-spacing: -0.04em;
-    line-height: 1.12;
+    font-size: clamp(1.5rem, 3.6vw, 1.95rem);
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    line-height: 1.2;
+}
+
+.landing-hero__subtitle {
+    margin: 0.6rem auto 0;
+    max-width: 46rem;
+    color: var(--agil-muted);
+    font-size: 0.9rem;
+    font-weight: 500;
+    line-height: 1.5;
 }
 
 /* O bloco da tela inicial e um flex column com min-height para centralizar;
@@ -305,20 +296,22 @@ body,
 
 .st-key-quick_actions button {
     min-height: 46px;
+    border: none !important;
     border-radius: var(--agil-control-radius) !important;
+    background: var(--agil-control-fill) !important;
     font-size: 0.86rem;
     font-weight: 500;
-    transition: transform 160ms ease;
+    transition: transform 160ms ease, background 160ms ease;
 }
 
 .st-key-quick_actions button:hover {
+    background: var(--agil-control-fill-hover) !important;
     transform: translateY(-1px);
 }
 
 .st-key-quick_actions button:focus-visible {
     outline: none;
-    border-color: var(--agil-user-bubble);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--agil-accent) 45%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--agil-accent) 55%, transparent);
 }
 
 /* ------------------------------- Tela chat ------------------------------ */
@@ -369,10 +362,6 @@ body,
         padding: 0.75rem 0.8rem 6.5rem;
     }
 
-    .page-heading {
-        margin-bottom: 1rem;
-    }
-
     .chat-bubble {
         max-width: calc(100% - 52px);
     }
@@ -415,21 +404,15 @@ _LANDING_EXIT_STYLE = """
 </style>
 """
 
-_LANDING_HERO = """
-<section class="landing-hero">
-    <h1 class="landing-hero__title">Como posso ajudar você hoje?</h1>
-</section>
-"""
-
-_PAGE_HEADING = """
-<header class="page-heading">
-    <h1 class="page-heading__title">🏦 Banco Ágil: Atendimento Digital</h1>
-    <p class="page-heading__subtitle">
-        Cuide do seu crédito de forma simples: consulte seu limite, peça
-        aumento, faça sua análise e acompanhe cotações de moedas.
-    </p>
-</header>
-"""
+_LANDING_HERO = (
+    '<header class="landing-hero">'🏦
+    '<h1 class="landing-hero__brand">Banco Ágil: Atendimento Digital</h1>'
+    '<p class="landing-hero__subtitle">'
+    "Consulte seu limite, peça aumento, faça sua análise e acompanhe "
+    "cotações de moedas."
+    "</p>"
+    "</header>"
+)
 
 _TYPING_INDICATOR = """
 <div class="chat-row chat-row--assistant" role="status" aria-label="Digitando">
@@ -788,11 +771,8 @@ def _render_chat(
     """Mostra o histórico, processa a entrada e oferece novo atendimento."""
     user_input = st.chat_input("Digite sua mensagem")
     with st.container(key="chat_view"):
-        heading_column, restart_column = st.columns(
-            [5, 2], gap="small", vertical_alignment="center"
-        )
-        with heading_column:
-            st.markdown(_PAGE_HEADING, unsafe_allow_html=True)
+        # Sem cabeçalho aqui: a marca vive na tela inicial.
+        _, restart_column = st.columns([5, 2], gap="small")
         with restart_column, st.container(key="restart_chat"):
             restart = st.button(
                 "Novo atendimento",
