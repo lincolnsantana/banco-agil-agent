@@ -196,23 +196,160 @@ _FLOW_REFUSAL_WORDS = frozenset(
 _FLOW_NEVER_WORDS = frozenset({"nunca", "jamais"})
 
 
+_WORD_PATTERN = re.compile(r"[a-z0-9]+")
+_CURRENCY_WORDS = frozenset(
+    {
+        "cambio",
+        "cotacao",
+        "cotacoes",
+        "dolar",
+        "euro",
+        "libra",
+        "iene",
+        "moeda",
+        "moedas",
+    }
+)
+_LIMIT_NOUNS = frozenset({"limite", "limites", "credito", "cartao"})
+_SCORE_NOUNS = frozenset({"score", "pontuacao", "pontos"})
+# Pedem aumento sozinhos: "quero aumentar" ja e pedido, sem substantivo.
+_STRONG_INCREASE_MARKERS = frozenset(
+    {
+        "aumentar",
+        "aumento",
+        "aumenta",
+        "aumente",
+        "aumentando",
+        "subir",
+        "suba",
+        "elevar",
+        "eleve",
+        "ampliar",
+        "amplie",
+    }
+)
+# Só qualificam algo: sem substantivo, "mais" ou "novo" nao dizem nada.
+_QUALIFIER_MARKERS = frozenset(
+    {
+        "melhorar",
+        "melhore",
+        "melhorou",
+        "maior",
+        "mais",
+        "novo",
+        "nova",
+        "alterar",
+        "altere",
+        "ajustar",
+        "ajuste",
+        "modificar",
+        "modifique",
+        "mudar",
+        "mude",
+        "atualizar",
+        "atualize",
+        "revisar",
+        "rever",
+        "liberar",
+        "libere",
+    }
+)
+_INCREASE_MARKERS = _STRONG_INCREASE_MARKERS | _QUALIFIER_MARKERS
+_QUERY_MARKERS = frozenset(
+    {
+        "qual",
+        "quais",
+        "quanto",
+        "quantos",
+        "ver",
+        "vejo",
+        "veja",
+        "consultar",
+        "consulto",
+        "consulte",
+        "consulta",
+        "mostrar",
+        "mostra",
+        "mostre",
+        "visualizar",
+        "visualizo",
+        "saber",
+        "conferir",
+        "confiro",
+        "checar",
+        "exibir",
+        "exiba",
+        "informar",
+    }
+)
+
+
+def _first_index(words: list[str], vocabulary: frozenset[str]) -> int | None:
+    for index, word in enumerate(words):
+        if word in vocabulary:
+            return index
+    return None
+
+
+def _increase_targets_score(
+    increase_at: int,
+    limit_at: int | None,
+    score_at: int | None,
+) -> bool:
+    """Decide se o pedido de aumento recai sobre o score ou sobre o limite."""
+    if score_at is None:
+        return False
+    if limit_at is None:
+        return True
+    return abs(score_at - increase_at) < abs(limit_at - increase_at)
+
+
+def classify_banking_request(user_text: str) -> Intent | None:
+    """Classifica o pedido pelo alvo da acao, nao por palavra solta.
+
+    Uma varredura plana confunde "aumentar meu limite porque o score melhorou"
+    com pedido de score, e "saber meu limite antes de pedir aumento" com pedido
+    de aumento. Aqui a acao do cliente, consultar ou aumentar, e casada com o
+    substantivo mais proximo dela; sem acao reconhecida, o pedido e consulta.
+    """
+    words = _WORD_PATTERN.findall(normalized_text(user_text))
+    if not words:
+        return None
+    if _first_index(words, _CURRENCY_WORDS) is not None:
+        return Intent.EXCHANGE_RATE
+    if "entrevista" in words:
+        return Intent.CREDIT_INTERVIEW
+
+    limit_at = _first_index(words, _LIMIT_NOUNS)
+    score_at = _first_index(words, _SCORE_NOUNS)
+    if limit_at is None and score_at is None:
+        # "quero aumentar", sem dizer o que, e pedido de limite neste banco.
+        if _first_index(words, _STRONG_INCREASE_MARKERS) is not None:
+            return Intent.LIMIT_INCREASE
+        return None
+
+    consultation = (
+        Intent.CREDIT_LIMIT if limit_at is not None else Intent.CREDIT_INTERVIEW
+    )
+    increase_at = _first_index(words, _INCREASE_MARKERS)
+    if increase_at is None:
+        return consultation
+
+    query_at = _first_index(words, _QUERY_MARKERS)
+    if query_at is not None and query_at < increase_at:
+        # "quero saber meu limite antes de pedir aumento" continua consulta.
+        return consultation
+    if _increase_targets_score(increase_at, limit_at, score_at):
+        return Intent.CREDIT_INTERVIEW
+    return Intent.LIMIT_INCREASE
+
+
 def detect_howto_topic(user_text: str) -> Intent | None:
     """Mapeia pergunta de como-fazer ao fluxo, sem usar LLM."""
     normalized = normalized_text(user_text)
     if not any(marker in normalized for marker in _HOWTO_MARKERS):
         return None
-    if any(word in normalized for word in ("entrevista", "score", "pontuacao")):
-        return Intent.CREDIT_INTERVIEW
-    if any(
-        word in normalized
-        for word in ("cambio", "cotacao", "dolar", "euro", "libra", "moeda")
-    ):
-        return Intent.EXCHANGE_RATE
-    if "aument" in normalized or "novo limite" in normalized:
-        return Intent.LIMIT_INCREASE
-    if "limite" in normalized:
-        return Intent.CREDIT_LIMIT
-    return None
+    return classify_banking_request(user_text)
 
 
 _FLOW_AFFIRMATIVE_PHRASES = frozenset(

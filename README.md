@@ -79,6 +79,10 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
   com tratamento humanizado de indisponibilidade e sem inventar valores.
 - Dúvidas sobre como aumentar limite ou score orientam a entrevista de crédito;
   pedidos diretos de novo limite continuam sendo avaliados pelo score atual.
+- A triagem separa consultar limite, aumentar limite e atualizar score casando a
+  ação do cliente com o substantivo que ela atinge, e não por palavra solta:
+  `saber meu limite antes de pedir aumento` é consulta, `aumentar meu limite
+  porque o score melhorou` é aumento.
 - Histórico completo permanece visível enquanto a aba estiver aberta; somente
   as seis mensagens mais recentes são enviadas ao grafo e ao Groq.
 - Encerramento (`encerrar`, `sair`, `finalizar`…) prioritário em qualquer nó.

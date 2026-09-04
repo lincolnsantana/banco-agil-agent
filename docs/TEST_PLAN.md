@@ -115,6 +115,17 @@ mensagens permanecem visíveis na aba e o contexto enviado ao Groq segue limitad
 às seis mais recentes. No passo 4, o atendimento encerra a entrevista e informa
 que nada foi guardado.
 
+## CT09 — Consulta, aumento e score não se confundem
+
+1. Autentique-se e envie, um por vez, em atendimentos separados quando precisar:
+   `qual é o meu limite?`, `quero saber meu limite antes de pedir aumento`,
+   `preciso de mais limite`, `quero aumentar meu limite porque meu score
+   melhorou` e `quero aumentar meu score`.
+
+Resultado esperado: os dois primeiros respondem o limite atual sem oferecer
+aumento; o terceiro e o quarto perguntam qual limite total você deseja; só o
+último abre a entrevista de crédito. Confundir qualquer um deles é falha.
+
 ## CT05 — Três falhas e encerramento
 
 1. Envie `01234567890` e `01/01/2000` três vezes (reinformando o CPF a cada vez).

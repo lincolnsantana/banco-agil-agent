@@ -551,7 +551,10 @@ def test_ambiguous_intent_uses_llm_then_specialist_rewriting(client: Client) -> 
     harness = build_harness(client, llm)
     state = ConversationState(authenticated_client=client)
 
-    turn = harness.service.handle_turn(state, (), "quero rever meu crédito")
+    # Frase sem substantivo bancario: o parser nao resolve e o Groq classifica.
+    turn = harness.service.handle_turn(
+        state, (), "preciso resolver uma pendência da minha conta"
+    )
 
     assert state.active_agent is Agent.CREDIT
     assert state.intent is Intent.LIMIT_INCREASE

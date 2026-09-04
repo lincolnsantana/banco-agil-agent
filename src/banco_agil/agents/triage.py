@@ -8,11 +8,11 @@ from pydantic import BaseModel
 
 from banco_agil.agents._shared import (
     HELP_REPLY,
+    classify_banking_request,
     detect_howto_topic,
     end_conversation,
     end_reply_if_requested,
     is_help_request,
-    normalized_text,
     parse_flow_answer,
     sanitize_user_text,
 )
@@ -251,26 +251,8 @@ def _resume_requested_intent(state: ConversationState) -> str:
 
 
 def _deterministic_intent(user_text: str) -> Intent | None:
-    normalized = normalized_text(user_text)
-    if any(
-        word in normalized
-        for word in ("cambio", "cotacao", "dolar", "euro", "moeda", "moedas")
-    ):
-        return Intent.EXCHANGE_RATE
-    if any(
-        term in normalized
-        for term in ("entrevista", "score", "pontuacao", "pontos de credito")
-    ):
-        return Intent.CREDIT_INTERVIEW
-    if any(term in normalized for term in ("aumentar", "aumento", "novo limite")):
-        return Intent.LIMIT_INCREASE
-    if "limite" in normalized and any(
-        term in normalized for term in ("alterar", "ajustar", "modificar", "mudar")
-    ):
-        return Intent.LIMIT_INCREASE
-    if "limite" in normalized:
-        return Intent.CREDIT_LIMIT
-    return None
+    """Reaproveita o classificador que casa acao e substantivo do pedido."""
+    return classify_banking_request(user_text)
 
 
 def _llm_intent(

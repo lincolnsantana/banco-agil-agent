@@ -9,7 +9,11 @@ import pytest
 from langchain_core.messages import BaseMessage
 from pydantic import BaseModel
 
-from banco_agil.agents._shared import humanize_reply, mask_user_text
+from banco_agil.agents._shared import (
+    classify_banking_request,
+    humanize_reply,
+    mask_user_text,
+)
 from banco_agil.agents.credit import handle_credit
 from banco_agil.agents.credit_interview import (
     _score_completion_reply,
@@ -596,6 +600,56 @@ def test_cpf_and_birth_date_do_not_overwrite_the_remembered_request(
 
     # Nem o CPF nem o nascimento carregam intencao: o pedido original resiste.
     assert state.deferred_intent is Intent.EXCHANGE_RATE
+
+
+@pytest.mark.parametrize(
+    ("pedido", "esperado"),
+    (
+        # Consulta: o cliente quer ver, nao mudar.
+        ("qual é o meu limite?", Intent.CREDIT_LIMIT),
+        ("quero visualizar meu limite de crédito", Intent.CREDIT_LIMIT),
+        ("quanto tenho de limite", Intent.CREDIT_LIMIT),
+        ("me mostra meu limite atual", Intent.CREDIT_LIMIT),
+        ("qual meu limite e meu score?", Intent.CREDIT_LIMIT),
+        ("quero saber meu limite antes de pedir aumento", Intent.CREDIT_LIMIT),
+        # Aumento: a acao recai sobre o limite.
+        ("quero aumentar meu limite", Intent.LIMIT_INCREASE),
+        ("preciso de mais limite", Intent.LIMIT_INCREASE),
+        ("quero um limite maior", Intent.LIMIT_INCREASE),
+        ("dá pra subir meu limite?", Intent.LIMIT_INCREASE),
+        ("solicitar aumento de crédito", Intent.LIMIT_INCREASE),
+        ("quero aumentar meu limite porque meu score melhorou", Intent.LIMIT_INCREASE),
+        ("quero aumentar", Intent.LIMIT_INCREASE),
+        # Entrevista: a acao recai sobre o score.
+        ("quero aumentar meu score", Intent.CREDIT_INTERVIEW),
+        ("quero atualizar meu score", Intent.CREDIT_INTERVIEW),
+        ("melhorar minha pontuação", Intent.CREDIT_INTERVIEW),
+        ("quero fazer a entrevista de crédito", Intent.CREDIT_INTERVIEW),
+        # Cambio ganha de tudo.
+        ("qual a cotação do dólar?", Intent.EXCHANGE_RATE),
+    ),
+)
+def test_classifier_matches_the_action_to_what_it_acts_on(
+    pedido: str,
+    esperado: Intent,
+) -> None:
+    assert classify_banking_request(pedido) is esperado
+
+
+@pytest.mark.parametrize(
+    "pedido",
+    (
+        "preciso resolver uma pendência da minha conta",
+        "quero mais informações",
+        "tenho uma dúvida",
+        "bom dia",
+    ),
+)
+def test_classifier_defers_to_the_llm_when_nothing_is_recognizable(
+    pedido: str,
+) -> None:
+    # Sem substantivo bancario nem pedido explicito, quem decide e o Groq.
+    assert classify_banking_request(pedido) is None
 
 
 def test_agent_for_intent_maps_each_request_to_its_specialist() -> None:
