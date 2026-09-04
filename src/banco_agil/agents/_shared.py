@@ -123,9 +123,12 @@ def authentication_reply_if_missing(state: ConversationState) -> str | None:
     return "Para continuar, preciso confirmar seus dados. Por favor, informe seu CPF."
 
 
+_SHORT_ANSWER_PUNCTUATION = ".,!?;:'\"()[]-"
+
+
 def parse_confirmation(value: str) -> bool | None:
     """Converte respostas curtas de consentimento sem usar LLM."""
-    normalized = normalized_text(value)
+    normalized = normalized_text(value).strip(_SHORT_ANSWER_PUNCTUATION).strip()
     if normalized in {"sim", "aceito", "concordo", "pode", "quero"}:
         return True
     if normalized in {"nao", "recuso", "prefiro nao"}:

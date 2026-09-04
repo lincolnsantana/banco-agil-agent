@@ -7,7 +7,7 @@ from decimal import Decimal
 import pytest
 
 from banco_agil.agents.state import ConversationState, CreditInterviewDraft
-from banco_agil.domain.enums import Agent
+from banco_agil.domain.enums import Agent, EmploymentType
 from banco_agil.domain.exceptions import AuthorizationError, DomainError
 from banco_agil.domain.models import Client
 from banco_agil.services.credit_interview import (
@@ -154,6 +154,64 @@ def test_invalid_answer_does_not_advance_or_persist(
 
     assert state.interview_draft == previous_draft
     assert repository.updates == []
+
+
+@pytest.mark.parametrize(
+    ("employment_answer", "expected_employment"),
+    [
+        ("formal.", EmploymentType.FORMAL),
+        ("AUTÔNOMO!", EmploymentType.SELF_EMPLOYED),
+        ("autonomo", EmploymentType.SELF_EMPLOYED),
+        ("Desempregado...", EmploymentType.UNEMPLOYED),
+    ],
+)
+def test_interview_tolerates_employment_punctuation_and_case(
+    interview_context: tuple[
+        CreditInterviewService,
+        FakeClientRepository,
+        ConversationState,
+    ],
+    employment_answer: str,
+    expected_employment: EmploymentType,
+) -> None:
+    service, _, state = interview_context
+    service.start(state, consent=True)
+    service.submit_answer(state, "5000")
+
+    progress = service.submit_answer(state, employment_answer)
+
+    assert progress.next_field is InterviewField.MONTHLY_EXPENSES
+    assert state.interview_draft.employment_type is expected_employment
+
+
+@pytest.mark.parametrize(
+    ("answers", "expected_dependents"),
+    [
+        (["5000", "formal", "2000", "3.", "não."], 3),
+        (["5000", "formal", "2000", "2!", "Sim"], 2),
+        (["5000", "formal", "2000", "0", "NÃO?"], 0),
+    ],
+)
+def test_interview_tolerates_debts_and_dependents_punctuation(
+    interview_context: tuple[
+        CreditInterviewService,
+        FakeClientRepository,
+        ConversationState,
+    ],
+    answers: list[str],
+    expected_dependents: int,
+) -> None:
+    service, _, state = interview_context
+    service.start(state, consent=True)
+
+    for answer in answers[:-1]:
+        service.submit_answer(state, answer)
+    assert state.interview_draft.dependents == expected_dependents
+    progress = service.submit_answer(state, answers[-1])
+
+    assert progress.completed
+    assert progress.score_update is not None
+    assert state.interview_draft == CreditInterviewDraft()
 
 
 def test_complete_interview_updates_score_and_returns_to_credit(

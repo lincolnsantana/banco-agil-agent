@@ -81,12 +81,31 @@ def handle_credit_interview(
                 "Entrevista concluída e score atualizado. Farei a reanálise sem "
                 "garantia de aprovação."
             )
-        return (
-            f"Entrevista concluída e score atualizado de "
-            f"{score_result.previous_score} para {score_result.new_score}. "
-            "Posso ajudar em algo mais?"
+        return _score_completion_reply(
+            score_result.previous_score, score_result.new_score
         )
     return _question(progress.next_field)
+
+
+def _score_completion_reply(previous_score: int, new_score: int) -> str:
+    """Monta a conclusão contextual sem prometer aprovação."""
+    if new_score > previous_score:
+        return (
+            f"Que boa notícia: seu score subiu de {previous_score} para "
+            f"{new_score} com os dados atualizados. Quer que eu analise um "
+            "novo limite ou consulte uma moeda?"
+        )
+    if new_score < previous_score:
+        return (
+            f"Seu score foi atualizado de {previous_score} para {new_score}, "
+            "uma queda pelos dados informados — e isso não define seus "
+            "próximos passos. Quer revisar outro serviço ou tentar uma nova "
+            "análise de limite?"
+        )
+    return (
+        f"Seu score permanece em {new_score} após a entrevista. Quer "
+        "analisar um limite ou consultar uma moeda?"
+    )
 
 
 def _current_field(state: ConversationState) -> InterviewField:

@@ -106,12 +106,12 @@ def _format_quote(
         return (
             f"{prefix}O {label} está em R$ {formatted_rate} "
             f"(última atualização às {brasilia_time} horário de Brasília, "
-            f"fonte {source}). Posso ajudar em algo mais?"
+            f"fonte {source}). Quer consultar outro par ou tratar de limite?"
         )
     return (
         f"{prefix}A cotação {base_currency}-{quote_currency} é {formatted_rate} "
         f"(última atualização às {brasilia_time} horário de Brasília, "
-        f"fonte {source}). Posso ajudar em algo mais?"
+        f"fonte {source}). Quer consultar outro par ou tratar de limite?"
     )
 
 

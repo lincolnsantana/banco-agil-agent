@@ -11,7 +11,10 @@ from pydantic import BaseModel
 
 from banco_agil.agents._shared import humanize_reply
 from banco_agil.agents.credit import handle_credit
-from banco_agil.agents.credit_interview import handle_credit_interview
+from banco_agil.agents.credit_interview import (
+    _score_completion_reply,
+    handle_credit_interview,
+)
 from banco_agil.agents.exchange import handle_exchange
 from banco_agil.agents.state import ConversationState, CreditInterviewDraft
 from banco_agil.agents.triage import handle_triage
@@ -595,6 +598,61 @@ def test_interview_requires_consent_before_collecting(client: Client) -> None:
     assert "renda mensal" in accepted_reply.casefold()
     assert service.starts == [True]
     assert service.answers == []
+
+
+@pytest.mark.parametrize("consent_text", ["sim.", "Sim!", "sim..."])
+def test_interview_consent_tolerates_punctuation(
+    client: Client, consent_text: str
+) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT_INTERVIEW,
+    )
+    service = FakeInterviewService(
+        InterviewProgress(next_field=InterviewField.MONTHLY_INCOME)
+    )
+
+    reply = handle_credit_interview(state, consent_text, service)
+
+    assert "renda mensal" in reply.casefold()
+    assert service.starts == [True]
+    assert service.answers == []
+
+
+@pytest.mark.parametrize("consent_text", ["não.", "Não!"])
+def test_interview_declined_consent_tolerates_punctuation(
+    client: Client, consent_text: str
+) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT_INTERVIEW,
+    )
+    service = FakeInterviewService(
+        InterviewProgress(next_field=InterviewField.MONTHLY_INCOME)
+    )
+
+    handle_credit_interview(state, consent_text, service)
+
+    assert service.starts == [False]
+    assert service.answers == []
+
+
+@pytest.mark.parametrize(
+    ("previous_score", "new_score", "expected_markers"),
+    [
+        (547, 800, ("subiu", "547", "800")),
+        (547, 214, ("queda", "547", "214")),
+        (600, 600, ("permanece", "600")),
+    ],
+)
+def test_score_completion_reply_matches_score_direction(
+    previous_score: int, new_score: int, expected_markers: tuple[str, ...]
+) -> None:
+    reply = _score_completion_reply(previous_score, new_score)
+
+    assert all(marker in reply for marker in expected_markers)
+    assert "posso ajudar em algo mais" not in reply.casefold()
+    assert "garant" not in reply.casefold()
 
 
 def test_interview_completion_returns_to_credit(client: Client) -> None:

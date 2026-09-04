@@ -340,6 +340,28 @@ def test_interview_completion_reanalyzes_credit_in_same_turn(client: Client) -> 
     assert not state.credit_reanalysis_pending
 
 
+def test_direct_interview_completion_reports_score_direction(client: Client) -> None:
+    harness = build_harness(client)
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT_INTERVIEW,
+        interview_draft=CreditInterviewDraft(
+            consent_given=True,
+            monthly_income=Decimal("1000.00"),
+            employment_type=EmploymentType.UNEMPLOYED,
+            monthly_expenses=Decimal("5000.00"),
+            dependents=3,
+        ),
+    )
+
+    turn = harness.service.handle_turn(state, (), "sim.")
+
+    assert "queda" in turn.reply.casefold()
+    assert "700" in turn.reply
+    assert "posso ajudar em algo mais" not in turn.reply.casefold()
+    assert harness.clients.client.credit_score == 0
+
+
 @pytest.mark.parametrize("agent", list(Agent))
 def test_end_request_preempts_every_graph_node(client: Client, agent: Agent) -> None:
     llm = RecordingLlm({"intent": "credit_limit"})

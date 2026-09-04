@@ -41,7 +41,7 @@ def handle_credit(
         state.active_agent = Agent.TRIAGE
         return (
             f"Seu limite atual é R$ {format_money(result.current_limit)}. "
-            "Posso ajudar em algo mais?"
+            "Quer que eu analise um aumento ou consulte uma moeda?"
         )
 
     if state.intent is not Intent.LIMIT_INCREASE:
@@ -99,7 +99,7 @@ def _request_increase(
     return (
         f"Boa notícia: seu pedido de limite total de R$ "
         f"{format_money(result.requested_limit)} foi aprovado e o limite cadastrado "
-        "foi atualizado. Posso ajudar em algo mais?"
+        "foi atualizado. Quer consultar uma moeda ou tratar de outro assunto?"
     )
 
 

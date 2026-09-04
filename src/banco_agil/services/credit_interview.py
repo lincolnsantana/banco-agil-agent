@@ -1,5 +1,6 @@
 """Coleta validada e incremental da entrevista de credito."""
 
+import unicodedata
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
@@ -106,7 +107,7 @@ class CreditInterviewService:
             if current_field is InterviewField.MONTHLY_INCOME:
                 draft.monthly_income = _parse_money(answer)
             elif current_field is InterviewField.EMPLOYMENT_TYPE:
-                draft.employment_type = EmploymentType(answer.strip().casefold())
+                draft.employment_type = _parse_employment_type(answer)
             elif current_field is InterviewField.MONTHLY_EXPENSES:
                 draft.monthly_expenses = _parse_money(answer)
             elif current_field is InterviewField.DEPENDENTS:
@@ -192,17 +193,46 @@ def _parse_money(answer: str) -> Decimal:
     return value
 
 
+_SHORT_ANSWER_PUNCTUATION = ".,!?;:'\"()[]-"
+
+_EMPLOYMENT_BY_NORMALIZED = {
+    "formal": EmploymentType.FORMAL,
+    "autonomo": EmploymentType.SELF_EMPLOYED,
+    "desempregado": EmploymentType.UNEMPLOYED,
+}
+
+
+def _normalize_short_answer(answer: str) -> str:
+    """Remove acentos, caixa e pontuação lateral de respostas curtas."""
+    without_accents = "".join(
+        character
+        for character in unicodedata.normalize("NFKD", answer.casefold().strip())
+        if not unicodedata.combining(character)
+    )
+    return " ".join(without_accents.split()).strip(_SHORT_ANSWER_PUNCTUATION).strip()
+
+
+def _parse_employment_type(answer: str) -> EmploymentType:
+    try:
+        return _EMPLOYMENT_BY_NORMALIZED[_normalize_short_answer(answer)]
+    except KeyError as error:
+        raise ValueError(
+            "employment type must be formal, autônomo ou desempregado"
+        ) from error
+
+
 def _parse_dependents(answer: str) -> int:
-    value = int(answer.strip())
+    cleaned = answer.strip().rstrip(_SHORT_ANSWER_PUNCTUATION).strip()
+    value = int(cleaned)
     if value < 0:
         raise ValueError("dependents cannot be negative")
     return value
 
 
 def _parse_active_debts(answer: str) -> bool:
-    normalized = answer.strip().casefold()
+    normalized = _normalize_short_answer(answer)
     if normalized == "sim":
         return True
-    if normalized == "não":
+    if normalized == "nao":
         return False
     raise ValueError("active debts answer must be sim or não")
