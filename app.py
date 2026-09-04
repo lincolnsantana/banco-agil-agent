@@ -138,28 +138,41 @@ def llm_status_message(settings: Settings) -> str:
     )
 
 
+def _looks_like_cpf(text: str) -> bool:
+    """Indica se o texto contém 11 dígitos para reabrir o atendimento."""
+    return len(re.sub(r"\D", "", text)) == 11
+
+
 def submit_user_message(
     session: MutableMapping[str, object],
     service: ConversationServiceLike,
     user_text: str,
+    welcome_message: str = DEFAULT_WELCOME_MESSAGE,
 ) -> str:
     """Encaminha a entrada ao serviço e atualiza a sessão.
 
     Erros recuperáveis viram mensagens amigáveis, sem detalhe interno, e não
-    corrompem a conversa em andamento.
+    corrompem a conversa em andamento. Com o atendimento encerrado, um CPF
+    inicia outro automaticamente.
     """
-    init_session(session)
+    init_session(session, welcome_message)
     text = user_text.strip()
     if not text:
         notice = "Digite uma mensagem para continuar."
         session[_NOTICE_KEY] = notice
         return notice
     state = cast(ConversationState, session[_CONVERSATION_KEY])
+    if state.ended and _looks_like_cpf(text):
+        reset_conversation(session, welcome_message)
+        state = cast(ConversationState, session[_CONVERSATION_KEY])
     history = cast(Sequence[BaseMessage], session[_HISTORY_KEY])
     try:
         turn = service.handle_turn(state, history, text)
     except DomainError:
-        notice = "Este atendimento já foi encerrado. Reinicie para começar outro."
+        notice = (
+            "Este atendimento foi encerrado. "
+            "Para começar outro, informe seu CPF com 11 dígitos."
+        )
         session[_NOTICE_KEY] = notice
         return notice
     except Exception:
@@ -170,14 +183,6 @@ def submit_user_message(
     session[_HISTORY_KEY] = list(turn.history)
     session[_NOTICE_KEY] = None
     return turn.reply
-
-
-def end_conversation(
-    session: MutableMapping[str, object],
-    service: ConversationServiceLike,
-) -> str:
-    """Encerra o atendimento pelo mesmo caminho de uma mensagem do cliente."""
-    return submit_user_message(session, service, "encerrar")
 
 
 def _optional_llm(settings: Settings) -> GroqStructuredLlm | None:
@@ -220,20 +225,17 @@ def main() -> None:
     if isinstance(notice, str) and notice:
         st.warning(notice)
     if state.ended:
-        st.info("Atendimento encerrado. Reinicie para iniciar um novo atendimento.")
-
-    end_clicked, restart_clicked = st.columns(2, gap="small")
-    if end_clicked.button("Encerrar atendimento", use_container_width=True):
-        end_conversation(session, service)
-        st.rerun()
-    if restart_clicked.button("Reiniciar atendimento", use_container_width=True):
-        reset_conversation(session, generate_welcome_message(llm))
-        st.rerun()
+        st.info(
+            "Atendimento encerrado. "
+            "Para um novo atendimento, informe seu CPF com 11 dígitos."
+        )
 
     user_input = st.chat_input("Digite sua mensagem")
     if user_input is not None:
         with st.spinner("Processando..."):
-            submit_user_message(session, service, user_input)
+            submit_user_message(
+                session, service, user_input, generate_welcome_message(llm)
+            )
         st.rerun()
 
 

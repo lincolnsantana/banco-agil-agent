@@ -20,6 +20,7 @@ class Intent(StrEnum):
     LIMIT_INCREASE = "limit_increase"
     CREDIT_INTERVIEW = "credit_interview"
     EXCHANGE_RATE = "exchange_rate"
+    HELP = "help"
     OTHER = "other"
     END_SERVICE = "end_service"
 

@@ -68,8 +68,11 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
 - Entrevista de crédito direta (pedido de score) ou após rejeição, com consentimento e reanálise quando houver limite pendente.
 - Cotação de moedas com tratamento de indisponibilidade.
 - Encerramento (`encerrar`, `sair`, `finalizar`…) prioritário em qualquer nó.
-- UI Streamlit com apresentação inicial gerada pelo Groq quando ativo, ações
-  responsivas, sessão persistente, reinício e mascaramento de dados.
+- Pergunta sobre o atendimento (`o que você pode fazer?`) respondida em
+  qualquer nó, exceto dentro da entrevista.
+- UI Streamlit sem botões: cada solicitação pergunta se deseja continuar ou
+  encerrar; após o encerramento, informar o CPF inicia outro atendimento.
+  Sessão persistente e mascaramento de dados.
 - Auditoria técnica consultável por sessão + métricas por chamada de LLM.
 - Mais de 200 testes (unitários, integração e E2E) + `docs/TEST_PLAN.md` de
   homologação.
@@ -144,9 +147,9 @@ quando a intenção continua ambígua; cada turno especialista faz no máximo um
 chamada de redação.
 
 Roteiro na UI: informe o CPF → informe o nascimento → `qual é meu limite?`
-(`R$ 2.500,00`) → `quero aumentar meu limite` → `4000` → `Encerrar atendimento`
-ou `Reiniciar atendimento`. Demonstração completa em `docs/DEMO.md`;
-homologação em `docs/TEST_PLAN.md`.
+(`R$ 2.500,00`) → `quero aumentar meu limite` → `4000` → responda `encerrar`
+para finalizar; informar o CPF inicia outro atendimento. Demonstração completa
+em `docs/DEMO.md`; homologação em `docs/TEST_PLAN.md`.
 
 Validação:
 

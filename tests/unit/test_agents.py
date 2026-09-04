@@ -431,8 +431,84 @@ def test_triage_uses_llm_only_for_ambiguous_authenticated_intent(
     assert state.active_agent is Agent.EXCHANGE
     assert len(llm.calls) == 1
     _, messages, version = llm.calls[0]
-    assert version == "global@1.3.0+triage@1.5.0"
+    assert version == "global@1.3.0+triage@1.6.0"
     assert "exterior" in str(messages[-1].content)
+
+
+@pytest.mark.parametrize(
+    "user_text",
+    (
+        "o que você pode fazer?",
+        "quais serviços você oferece?",
+        "como funciona o atendimento?",
+        "menu",
+        "ajuda",
+    ),
+)
+def test_triage_answers_about_services_without_llm(
+    client: Client,
+    user_text: str,
+) -> None:
+    state = ConversationState(authenticated_client=client)
+    llm = RecordingLlm({"intent": "other"})
+
+    reply = handle_triage(
+        state,
+        user_text,
+        FakeAuthenticationService(client),
+        llm=llm,
+        turn_id="help-turn",
+    )
+
+    assert "entrevista" in reply.casefold()
+    assert "cotação" in reply.casefold() or "moeda" in reply.casefold()
+    assert state.active_agent is Agent.TRIAGE
+    assert state.intent is Intent.UNKNOWN
+    assert llm.calls == []
+
+
+def test_triage_classifies_ambiguous_help_with_llm(client: Client) -> None:
+    state = ConversationState(authenticated_client=client)
+    llm = RecordingLlm({"intent": "help"})
+
+    reply = handle_triage(
+        state,
+        "me ajuda a entender as opções",
+        FakeAuthenticationService(client),
+        llm=llm,
+        turn_id="ambiguous-help-turn",
+    )
+
+    assert "entrevista" in reply.casefold()
+    assert state.active_agent is Agent.TRIAGE
+    assert len(llm.calls) == 1
+
+
+def test_credit_and_exchange_answer_help_without_consuming_flow(
+    client: Client,
+) -> None:
+    credit_state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT,
+        intent=Intent.LIMIT_INCREASE,
+    )
+    credit_reply = handle_credit(
+        credit_state,
+        "o que você pode fazer?",
+        FakeCreditService(_increase_result(CreditRequestStatus.APPROVED)),
+    )
+
+    assert "entrevista" in credit_reply.casefold()
+    assert credit_state.intent is Intent.LIMIT_INCREASE
+    assert credit_state.active_agent is Agent.CREDIT
+
+    exchange_state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.EXCHANGE,
+    )
+    exchange_reply = handle_exchange(exchange_state, "menu", FakeExchangeService(None))
+
+    assert "entrevista" in exchange_reply.casefold()
 
 
 def test_triage_keeps_ambiguous_intent_in_triage(client: Client) -> None:
@@ -737,6 +813,34 @@ def test_interview_completion_returns_to_credit(client: Client) -> None:
     assert state.credit_reanalysis_pending
     assert "reanálise" in reply.casefold()
     assert "aprovação garantida" not in reply.casefold()
+
+
+def test_interview_ignores_help_request_while_collecting(
+    client: Client,
+) -> None:
+    class ValidatingInterviewService(FakeInterviewService):
+        def collect_answer(
+            self,
+            state: ConversationState,
+            answer: str,
+        ) -> InterviewProgress:
+            del state, answer
+            raise DomainError("invalid interview answer")
+
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT_INTERVIEW,
+        interview_draft=CreditInterviewDraft(consent_given=True),
+    )
+    service = ValidatingInterviewService(
+        InterviewProgress(next_field=InterviewField.MONTHLY_INCOME)
+    )
+
+    reply = handle_credit_interview(state, "o que você pode fazer?", service)
+
+    assert "formato inválido" in reply.casefold()
+    assert "renda mensal" in reply.casefold()
+    assert service.answers == []
 
 
 def test_invalid_interview_answer_repeats_current_question(client: Client) -> None:

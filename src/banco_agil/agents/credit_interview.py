@@ -95,19 +95,18 @@ def _score_completion_reply(previous_score: int, new_score: int) -> str:
     if new_score > previous_score:
         return (
             f"Que boa notícia: seu score subiu de {previous_score} para "
-            f"{new_score} com os dados atualizados. Quer que eu analise um "
-            "novo limite ou consulte uma moeda?"
+            f"{new_score} com os dados atualizados. Deseja continuar ou "
+            "encerrar o atendimento?"
         )
     if new_score < previous_score:
         return (
             f"Seu score foi atualizado de {previous_score} para {new_score}, "
             "uma queda pelos dados informados — e isso não define seus "
-            "próximos passos. Quer revisar outro serviço ou tentar uma nova "
-            "análise de limite?"
+            "próximos passos. Deseja continuar ou encerrar o atendimento?"
         )
     return (
-        f"Seu score permanece em {new_score} após a entrevista. Quer "
-        "analisar um limite ou consultar uma moeda?"
+        f"Seu score permanece em {new_score} após a entrevista. Deseja "
+        "continuar ou encerrar o atendimento?"
     )
 
 

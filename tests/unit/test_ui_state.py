@@ -14,7 +14,6 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage  # noqa
 import app  # noqa: E402
 from app import (  # noqa: E402
     build_conversation_service,
-    end_conversation,
     history_for_display,
     init_session,
     llm_status_message,
@@ -139,8 +138,33 @@ def test_submit_ended_conversation_returns_restart_guidance() -> None:
         session, cast(app.ConversationServiceLike, service), "oi"
     )
 
-    assert "Reinicie" in reply
+    assert "CPF" in reply
+    assert "Reinicie" not in reply
     assert len(cast(list[BaseMessage], session["history"])) == 1
+
+
+def test_submit_cpf_after_end_starts_new_attendance() -> None:
+    from banco_agil.domain.enums import EndReason
+
+    session: dict[str, object] = {}
+    init_session(session)
+    ended_state = cast(ConversationState, session["conversation"])
+    ended_state.end(EndReason.USER_REQUEST)
+    service = FakeConversationService(
+        replies=["CPF localizado."], calls=[], fail_with=None
+    )
+
+    reply = submit_user_message(
+        session, cast(app.ConversationServiceLike, service), "11144477735"
+    )
+
+    assert service.calls == ["11144477735"]
+    assert reply == "CPF localizado."
+    history = cast(list[BaseMessage], session["history"])
+    assert [message.content for message in history] == [
+        "11144477735",
+        "CPF localizado.",
+    ]
 
 
 def test_submit_hides_technical_details_on_integration_failure() -> None:
@@ -162,19 +186,6 @@ def test_submit_hides_technical_details_on_integration_failure() -> None:
     assert "/tmp/x" not in reply
     assert "Traceback" not in reply
     assert len(cast(list[BaseMessage], session["history"])) == 1
-
-
-def test_end_conversation_routes_through_service() -> None:
-    session: dict[str, object] = {}
-    init_session(session)
-    service = FakeConversationService(
-        replies=["Atendimento encerrado."], calls=[], fail_with=None
-    )
-
-    reply = end_conversation(session, cast(app.ConversationServiceLike, service))
-
-    assert service.calls == ["encerrar"]
-    assert "encerrado" in reply.casefold()
 
 
 def test_mask_sensitive_text_hides_cpf_and_birth_date() -> None:

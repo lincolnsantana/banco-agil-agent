@@ -23,7 +23,7 @@ pós-autenticação ainda ambíguo envia o prompt de triagem ao provedor.
 | --- | --- | ---: |
 | `welcome` | `1.1.0` | 800 |
 | `global` | `1.3.0` | 1.200 |
-| `triage` | `1.5.0` | 1.000 |
+| `triage` | `1.6.0` | 1.000 |
 | `credit` | `1.3.0` | 1.000 |
 | `credit_interview` | `1.3.0` | 1.000 |
 | `exchange` | `1.4.0` | 1.000 |
@@ -121,7 +121,7 @@ serviços disponíveis e não prometa aprovação nem dê aconselhamento finance
 ## 6. System prompt de Triagem
 
 ID: `triage`  
-Versão: `1.5.0`
+Versão: `1.6.0`
 
 Autenticação e rotas claras usam este contrato em Python. O texto é enviado ao
 LLM somente para classificar intenção pós-autenticação ainda ambígua.
@@ -136,13 +136,11 @@ cadastrado, informe e peça outro; na terceira falha, seja cordial e use
 end_service. Somente após CPF válido, peça o nascimento e use authenticate_client.
 Não confirme autenticação antes do resultado dessa combinação.
 
-Após autenticar, identifique: consultar limite, pedir aumento, revisar
-score/entrevista, consultar câmbio, encerrar ou desconhecida. O parser trata
-intenções claras; quando solicitado a classificar texto ambíguo, escolha
-somente a intenção bancária correspondente. Entrevista direta exige
-consentimento antes de coletar dados; sem limite rejeitado, conclua apenas com
-o novo score. Se a intenção continuar desconhecida, peça esclarecimento. Não
-realize operações.
+Após autenticar, identifique: limite, aumento, entrevista/score, câmbio, ajuda,
+encerrar ou desconhecida. O parser trata o claro; no ambíguo, escolha só a
+intenção correspondente. Entrevista direta exige consentimento; sem limite
+rejeitado, conclua só com o novo score. Se continuar desconhecida, peça
+esclarecimento. Não realize operações.
 
 Estado: {{ state }}
 ```
@@ -255,8 +253,9 @@ canônica.
 A autenticação, o encerramento e o roteamento claro da triagem são totalmente
 determinísticos. Depois de autenticar, somente texto que o parser não resolver
 pode usar uma chamada Groq para classificar entre consulta, aumento,
-entrevista/score, câmbio ou desconhecida. Entrevista direta exige consentimento
-antes de coletar dados; com limite rejeitado, conclui com reanálise.
+entrevista/score, câmbio, ajuda ou desconhecida. Entrevista direta exige
+consentimento antes de coletar dados; com limite rejeitado, conclui com
+reanálise.
 Crédito, Entrevista e Câmbio usam o Groq para redigir o canônico protegido.
 
 Quando houver credencial, o modelo pode ainda redigir a resposta final completa

@@ -4,9 +4,11 @@ import re
 from decimal import Decimal, InvalidOperation
 
 from banco_agil.agents._shared import (
+    HELP_REPLY,
     authentication_reply_if_missing,
     end_reply_if_requested,
     format_money,
+    is_help_request,
 )
 from banco_agil.agents.state import ConversationState
 from banco_agil.domain.enums import Agent, CreditRequestStatus, Intent
@@ -29,6 +31,9 @@ def handle_credit(
     if authentication_reply is not None:
         return authentication_reply
 
+    if is_help_request(user_text):
+        return HELP_REPLY
+
     if state.credit_reanalysis_pending and state.requested_limit is not None:
         reanalysis_limit = state.requested_limit
         return _request_increase(state, service, reanalysis_limit)
@@ -41,7 +46,7 @@ def handle_credit(
         state.active_agent = Agent.TRIAGE
         return (
             f"Seu limite atual é R$ {format_money(result.current_limit)}. "
-            "Quer que eu analise um aumento ou consulte uma moeda?"
+            "Deseja continuar ou encerrar o atendimento?"
         )
 
     if state.intent is not Intent.LIMIT_INCREASE:
@@ -99,7 +104,7 @@ def _request_increase(
     return (
         f"Boa notícia: seu pedido de limite total de R$ "
         f"{format_money(result.requested_limit)} foi aprovado e o limite cadastrado "
-        "foi atualizado. Quer consultar uma moeda ou tratar de outro assunto?"
+        "foi atualizado. Deseja continuar ou encerrar o atendimento?"
     )
 
 

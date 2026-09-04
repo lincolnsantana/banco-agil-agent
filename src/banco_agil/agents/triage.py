@@ -7,8 +7,10 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from pydantic import BaseModel
 
 from banco_agil.agents._shared import (
+    HELP_REPLY,
     end_conversation,
     end_reply_if_requested,
+    is_help_request,
     normalized_text,
     sanitize_user_text,
 )
@@ -45,9 +47,19 @@ def handle_triage(
     if not state.authenticated:
         return _handle_authentication(state, user_text, service)
 
+    if is_help_request(user_text):
+        state.intent = Intent.UNKNOWN
+        state.active_agent = Agent.TRIAGE
+        return HELP_REPLY
+
     intent = _deterministic_intent(user_text)
     if intent is None:
         intent = _llm_intent(state, user_text, llm, turn_id, recent_messages)
+
+    if intent is Intent.HELP:
+        state.intent = Intent.UNKNOWN
+        state.active_agent = Agent.TRIAGE
+        return HELP_REPLY
 
     if intent not in {
         Intent.CREDIT_LIMIT,

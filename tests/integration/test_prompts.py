@@ -43,7 +43,7 @@ def test_registry_uses_documented_ids_versions_variables_and_limits() -> None:
         definition = PROMPT_REGISTRY.for_agent(agent)
         assert definition.prompt_id == agent.value
         if agent is Agent.TRIAGE:
-            expected_version = "1.5.0"
+            expected_version = "1.6.0"
         elif agent is Agent.EXCHANGE:
             expected_version = "1.4.0"
         else:
@@ -80,7 +80,7 @@ def test_rendering_produces_one_bounded_system_message_for_active_agent(
 
     assert isinstance(rendered.system_message, SystemMessage)
     if agent is Agent.TRIAGE:
-        specialist_version = "1.5.0"
+        specialist_version = "1.6.0"
     elif agent is Agent.EXCHANGE:
         specialist_version = "1.4.0"
     else:

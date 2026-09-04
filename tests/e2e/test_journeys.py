@@ -294,6 +294,23 @@ def test_corrupted_csv_returns_controlled_reply(tmp_path: Path) -> None:
     assert "tente novamente mais tarde" in replies[0].casefold()
 
 
+def test_help_then_close_and_reopen_attendance(tmp_path: Path) -> None:
+    service = _build_service(_write_data_dir(tmp_path), FakeExchangeProvider())
+    state = ConversationState()
+    history = _authenticate(service, state)
+
+    turn = service.handle_turn(state, history, "o que você pode fazer?")
+    assert "entrevista" in turn.reply.casefold()
+
+    turn = service.handle_turn(state, turn.history, "encerrar")
+    assert state.ended
+    assert "CPF" in turn.reply
+
+    fresh = ConversationState()
+    turn = service.handle_turn(fresh, (), "01234567890")
+    assert "localizado" in turn.reply.casefold()
+
+
 def test_missing_llm_asks_clarification(tmp_path: Path) -> None:
     service = _build_service(_write_data_dir(tmp_path), FakeExchangeProvider())
     state = ConversationState()

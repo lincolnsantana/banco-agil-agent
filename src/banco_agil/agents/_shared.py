@@ -64,9 +64,40 @@ _SAFE_LLM_WORDS = frozenset(
         "rever",
         "score",
         "servico",
+        "servicos",
         "viagem",
+        "fazer",
+        "funciona",
+        "menu",
+        "opcoes",
     }
 )
+
+HELP_REPLY = (
+    "Claro! Posso consultar seu limite de crédito, solicitar um aumento de "
+    "limite, conduzir a entrevista de crédito para revisar seu score e "
+    "consultar cotações de moedas como dólar e euro. Por onde quer começar?"
+)
+
+_HELP_PHRASES = (
+    "o que voce pode fazer",
+    "o que voce faz",
+    "o que voce oferece",
+    "quais servicos",
+    "que servicos",
+    "quais opcoes",
+    "como funciona",
+    "me fale sobre os servicos",
+    "o que posso fazer",
+)
+
+
+def is_help_request(user_text: str) -> bool:
+    """Detecta pergunta sobre o atendimento sem usar LLM."""
+    normalized = normalized_text(user_text)
+    if normalized in {"ajuda", "menu"}:
+        return True
+    return any(phrase in normalized for phrase in _HELP_PHRASES)
 
 
 _FACT_PATTERN = re.compile(
@@ -106,7 +137,10 @@ def end_reply_if_requested(state: ConversationState, user_text: str) -> str | No
     if normalized not in _END_REQUESTS and _END_PATTERN.search(normalized) is None:
         return None
     end_conversation(state, EndReason.USER_REQUEST)
-    return "Atendimento encerrado. Quando precisar, estaremos à disposição."
+    return (
+        "Atendimento encerrado. Quando precisar de um novo atendimento, "
+        "basta informar seu CPF com 11 dígitos."
+    )
 
 
 def end_conversation(state: ConversationState, reason: EndReason) -> None:

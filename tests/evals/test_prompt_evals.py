@@ -27,14 +27,14 @@ from banco_agil.domain.models import (
 )
 from banco_agil.prompts.renderer import render_prompt
 
-DATASET_VERSION = "1.0.0"
-PROMPT_VERSION = "global@1.3.0+triage@1.5.0"
+DATASET_VERSION = "1.1.0"
+PROMPT_VERSION = "global@1.3.0+triage@1.6.0"
 MAX_LATENCY_MS = 1000.0
 
 BASELINE = {
     "dataset_version": DATASET_VERSION,
     "prompt_version": PROMPT_VERSION,
-    "cases": 8,
+    "cases": 9,
     "accuracy": 1.0,
     "total_llm_calls": 0,
 }
@@ -62,6 +62,7 @@ INTENT_CASES = (
     IntentCase("qual é meu limite?", Agent.CREDIT, Intent.CREDIT_LIMIT),
     IntentCase("quero aumentar meu limite", Agent.CREDIT, Intent.LIMIT_INCREASE),
     IntentCase("cotação do dólar", Agent.EXCHANGE, Intent.EXCHANGE_RATE),
+    IntentCase("o que você pode fazer?", Agent.TRIAGE, Intent.UNKNOWN),
     IntentCase("preciso resolver outra coisa", Agent.TRIAGE, Intent.UNKNOWN),
     IntentCase("quero encerrar", Agent.TRIAGE, Intent.UNKNOWN, True),
 )

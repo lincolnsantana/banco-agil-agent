@@ -39,8 +39,8 @@ sem promessa de aprovação.
 1. Envie `cotação do dólar` → `🇺🇸 O dólar está em R$ 5,25 (última atualização às HH:MM horário de Brasília, fonte ...)` (com rede).
 2. Sem rede: a mesma pergunta retorna indisponibilidade controlada, sem valor
    inventado.
-3. Envie `encerrar` → atendimento finalizado; `Reiniciar atendimento` limpa a
-   conversa sem apagar os CSVs.
+3. Envie `encerrar` → mensagem de encerramento; informe o CPF para um novo
+   atendimento (a conversa anterior não apaga os CSVs).
 
 ## 5:00–6:30 — Bastidores (código e testes)
 

@@ -5,9 +5,11 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from banco_agil.agents._shared import (
+    HELP_REPLY,
     authentication_reply_if_missing,
     end_reply_if_requested,
     format_money,
+    is_help_request,
     normalized_text,
 )
 from banco_agil.agents.state import ConversationState
@@ -53,6 +55,9 @@ def handle_exchange(
     authentication_reply = authentication_reply_if_missing(state)
     if authentication_reply is not None:
         return authentication_reply
+
+    if is_help_request(user_text):
+        return HELP_REPLY
 
     pair = _parse_currency_pair(user_text)
     if pair is None:
@@ -106,12 +111,12 @@ def _format_quote(
         return (
             f"{prefix}O {label} está em R$ {formatted_rate} "
             f"(última atualização às {brasilia_time} horário de Brasília, "
-            f"fonte {source}). Quer consultar outro par ou tratar de limite?"
+            f"fonte {source}). Deseja continuar ou encerrar o atendimento?"
         )
     return (
         f"{prefix}A cotação {base_currency}-{quote_currency} é {formatted_rate} "
         f"(última atualização às {brasilia_time} horário de Brasília, "
-        f"fonte {source}). Quer consultar outro par ou tratar de limite?"
+        f"fonte {source}). Deseja continuar ou encerrar o atendimento?"
     )
 
 

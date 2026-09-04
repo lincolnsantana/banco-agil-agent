@@ -305,6 +305,30 @@ def test_approved_increase_updates_client_limit(client: Client) -> None:
     assert harness.requests.requests[0].status is CreditRequestStatus.APPROVED
 
 
+def test_help_lists_services_without_leaving_triage(client: Client) -> None:
+    harness = build_harness(client)
+    state = ConversationState(authenticated_client=client)
+
+    turn = harness.service.handle_turn(state, (), "o que você pode fazer?")
+
+    assert "entrevista" in turn.reply.casefold()
+    assert "dólar" in turn.reply.casefold() or "moeda" in turn.reply.casefold()
+    assert state.active_agent is Agent.TRIAGE
+    assert harness.exchange.calls == []
+    assert harness.requests.requests == []
+
+
+def test_ended_turn_points_to_cpf_for_new_attendance(client: Client) -> None:
+    harness = build_harness(client)
+    state = ConversationState(authenticated_client=client)
+
+    turn = harness.service.handle_turn(state, (), "encerrar")
+
+    assert state.ended
+    assert "encerrado" in turn.reply.casefold()
+    assert "CPF" in turn.reply
+
+
 def test_score_review_routes_to_interview_and_asks_consent(client: Client) -> None:
     harness = build_harness(client)
     state = ConversationState(authenticated_client=client)
