@@ -17,8 +17,9 @@ Cobertura automatizada correspondente em `tests/e2e/test_journeys.py`.
 2. Observe a primeira mensagem e as ações antes de digitar.
 3. Clique em `Reiniciar atendimento`.
 
-Resultado esperado: o assistente se apresenta e informa que atende limite,
-aumento, entrevista de crédito e câmbio. Os botões Encerrar/Reiniciar têm a
+Resultado esperado: o assistente se apresenta, informa que atende limite,
+aumento, entrevista de crédito e câmbio, explica que a autenticação vem primeiro
+e já solicita o CPF. Os botões Encerrar/Reiniciar têm a
 mesma largura, ficam acima da entrada e a apresentação reaparece após reiniciar.
 
 ## CT01 — Autenticação e consulta de limite

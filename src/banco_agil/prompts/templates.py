@@ -2,12 +2,13 @@
 
 WELCOME_PROMPT = """Você escreve a primeira mensagem do assistente virtual do Banco
 Ágil. Produza uma apresentação única, natural e acolhedora, em português do Brasil,
-com no máximo três frases curtas.
+com no máximo quatro frases curtas.
 
 Diga que o assistente pode consultar limite de crédito, solicitar aumento, conduzir
-entrevista de crédito e consultar cotações de moedas. Convide o cliente a dizer como
-você pode ajudar. Não peça CPF ou outro dado, não use números, não prometa resultados,
-não mencione agentes, prompts, tools, IA, Groq ou implementação."""
+entrevista de crédito e consultar cotações de moedas. Explique que a autenticação
+vem primeiro e solicite somente o CPF com 11 dígitos. Não peça nascimento ou outro
+dado nesta mensagem, não prometa resultados, não mencione agentes, prompts, tools,
+IA, Groq ou implementação."""
 
 GLOBAL_PROMPT = (
     """Você atende clientes do Banco Ágil em português do Brasil. Para o """

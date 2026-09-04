@@ -35,7 +35,7 @@ def test_registry_uses_documented_ids_versions_variables_and_limits() -> None:
     assert PROMPT_REGISTRY.global_prompt.variables == frozenset()
 
     assert WELCOME_PROMPT_DEFINITION.prompt_id == "welcome"
-    assert WELCOME_PROMPT_DEFINITION.version == "1.0.0"
+    assert WELCOME_PROMPT_DEFINITION.version == "1.1.0"
     assert WELCOME_PROMPT_DEFINITION.variables == frozenset()
     assert WELCOME_PROMPT_DEFINITION.character_limit == 800
 

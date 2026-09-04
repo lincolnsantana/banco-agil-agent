@@ -29,7 +29,8 @@ UI (app.py) -> ConversationService -> Graph (LangGraph) -> Tools -> Services
 Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
 ```
 
-- **UI** (`app.py`): boas-vindas com os serviços disponíveis, sessão e histórico
+- **UI** (`app.py`): boas-vindas com os serviços disponíveis e pedido imediato
+  de CPF, sessão e histórico
   entre reruns, máscara de CPF/nascimento na exibição, erros recuperáveis
   genéricos e ações Encerrar/Reiniciar alinhadas. Sem regra de negócio.
 - **Grafo** (`agents/router.py`, `agents/graph.py`): entrada exige autenticação;

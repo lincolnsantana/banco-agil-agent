@@ -15,11 +15,20 @@ from banco_agil.prompts.registry import WELCOME_PROMPT_DEFINITION
 DEFAULT_WELCOME_MESSAGE = (
     "Olá! Eu sou o assistente virtual do Banco Ágil. Posso consultar seu limite "
     "de crédito, solicitar aumento, conduzir uma entrevista de crédito e consultar "
-    "cotações de moedas. Para começar, conte como posso ajudar."
+    "cotações de moedas. A autenticação vem primeiro: por favor, informe seu CPF "
+    "com 11 dígitos."
 )
 
-_REQUIRED_TOPICS = ("banco agil", "limite", "aumento", "entrevista", "cotacao")
-_FORBIDDEN_TOPICS = ("groq", "prompt", "tool", "agente interno")
+_REQUIRED_TOPICS = (
+    "banco agil",
+    "limite",
+    "aumento",
+    "entrevista",
+    "cotacao",
+    "cpf",
+    "autentica",
+)
+_FORBIDDEN_TOPICS = ("groq", "prompt", "tool", "agente interno", "nascimento")
 
 
 class WelcomeReply(BaseModel):

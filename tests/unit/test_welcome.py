@@ -46,8 +46,8 @@ class RecordingWelcomeLlm:
 def test_welcome_is_generated_from_isolated_versioned_prompt() -> None:
     expected = (
         "Olá! Sou o assistente virtual do Banco Ágil. Posso ajudar com limite de "
-        "crédito, aumento, entrevista de crédito e cotação de moedas. Como posso "
-        "ajudar você hoje?"
+        "crédito, aumento, entrevista de crédito e cotação de moedas. A "
+        "autenticação vem primeiro: por favor, informe seu CPF com 11 dígitos."
     )
     llm = RecordingWelcomeLlm({"message": expected})
 
@@ -57,7 +57,7 @@ def test_welcome_is_generated_from_isolated_versioned_prompt() -> None:
     assert len(llm.calls) == 1
     turn_id, messages, version = llm.calls[0]
     assert turn_id == "welcome-fixed-id"
-    assert version == "welcome@1.0.0"
+    assert version == "welcome@1.1.0"
     assert len(messages) == 1
     assert isinstance(messages[0], SystemMessage)
     assert "{{" not in str(messages[0].content)
@@ -72,6 +72,29 @@ def test_welcome_falls_back_without_llm_or_on_failure() -> None:
 def test_welcome_rejects_message_that_omits_required_services() -> None:
     llm = RecordingWelcomeLlm(
         {"message": "Olá! Sou o assistente do Banco Ágil. Como posso ajudar você?"}
+    )
+
+    assert generate_welcome_message(llm) == DEFAULT_WELCOME_MESSAGE
+
+
+def test_canonical_welcome_requests_cpf_before_questions() -> None:
+    normalized = DEFAULT_WELCOME_MESSAGE.casefold()
+
+    assert "cpf" in normalized
+    assert "autentica" in normalized.replace("autenticação", "autentica")
+    assert "nascimento" not in normalized
+
+
+def test_welcome_rejects_message_that_requests_birth_date() -> None:
+    llm = RecordingWelcomeLlm(
+        {
+            "message": (
+                "Olá! Sou o assistente virtual do Banco Ágil. Posso ajudar com "
+                "limite de crédito, aumento, entrevista de crédito e cotação de "
+                "moedas. A autenticação vem primeiro: informe seu CPF e sua data "
+                "de nascimento."
+            )
+        }
     )
 
     assert generate_welcome_message(llm) == DEFAULT_WELCOME_MESSAGE

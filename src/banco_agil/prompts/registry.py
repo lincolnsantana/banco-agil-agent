@@ -89,7 +89,7 @@ class PromptRegistry:
 
 WELCOME_PROMPT_DEFINITION = PromptDefinition(
     prompt_id="welcome",
-    version="1.0.0",
+    version="1.1.0",
     template=WELCOME_PROMPT,
     variables=frozenset(),
     character_limit=800,

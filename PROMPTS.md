@@ -20,7 +20,7 @@ tools. A triagem é determinística e não envia prompt ao provedor.
 
 | ID | Versão | Limite de caracteres |
 | --- | --- | ---: |
-| `welcome` | `1.0.0` | 800 |
+| `welcome` | `1.1.0` | 800 |
 | `global` | `1.3.0` | 1.200 |
 | `triage` | `1.3.0` | 1.000 |
 | `credit` | `1.3.0` | 1.000 |
@@ -76,18 +76,18 @@ são enviados ao provedor.
 ## 4.1. Prompt de apresentação
 
 ID: `welcome`
-Versão: `1.0.0`
+Versão: `1.1.0`
 
 ```text
 Você escreve a primeira mensagem do assistente virtual do Banco Ágil. Produza
 uma apresentação única, natural e acolhedora, em português do Brasil, com no
-máximo três frases curtas.
+máximo quatro frases curtas.
 
 Diga que o assistente pode consultar limite de crédito, solicitar aumento,
-conduzir entrevista de crédito e consultar cotações de moedas. Convide o cliente
-a dizer como você pode ajudar. Não peça CPF ou outro dado, não use números, não
-prometa resultados, não mencione agentes, prompts, tools, IA, Groq ou
-implementação.
+conduzir entrevista de crédito e consultar cotações de moedas. Explique que a
+autenticação vem primeiro e solicite somente o CPF com 11 dígitos. Não peça
+nascimento ou outro dado nesta mensagem, não prometa resultados, não mencione
+agentes, prompts, tools, IA, Groq ou implementação.
 ```
 
 ## 5. System prompt global
@@ -240,7 +240,9 @@ no mesmo commit, e testes devem comparar IDs, versões, variáveis e limites.
 
 O Groq gera a apresentação inicial a partir do prompt `welcome`, sem receber
 estado, histórico ou tools. A saída estruturada precisa mencionar os quatro
-serviços disponíveis; saída inválida ou falha usa a apresentação canônica.
+serviços disponíveis, explicar que a autenticação vem primeiro e solicitar o
+CPF, sem pedir o nascimento; saída inválida ou falha usa a apresentação
+canônica.
 
 A triagem, incluindo autenticação e roteamento, é totalmente determinística e
 consome zero chamada. Crédito, Entrevista de Crédito e Câmbio usam o Groq para
