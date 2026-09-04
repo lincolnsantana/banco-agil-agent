@@ -28,17 +28,17 @@ UI (app.py) -> ConversationService -> Graph (LangGraph) -> Tools -> Services
 Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
 ```
 
-- **UI** (`app.py`): sessão e histórico entre reruns, máscara de CPF/nascimento
-  na exibição, erros recuperáveis genéricos, botões Encerrar/Reiniciar. Sem
-  regra de negócio.
+- **UI** (`app.py`): boas-vindas com os serviços disponíveis, sessão e histórico
+  entre reruns, máscara de CPF/nascimento na exibição, erros recuperáveis
+  genéricos e ações Encerrar/Reiniciar alinhadas. Sem regra de negócio.
 - **Grafo** (`agents/router.py`, `agents/graph.py`): entrada exige autenticação;
   triagem continua no mesmo turno para o especialista; entrevista concluída
   retorna ao crédito para reanálise; `MAX_HANDLER_STEPS=2` + `recursion_limit=8`
   impedem loops; histórico limitado às 6 mensagens recentes.
 - **Nós** (`agents/triage.py`, `credit.py`, `credit_interview.py`,
-  `exchange.py`): parsers determinísticos primeiro (CPF, data ISO, valores
-  `R$`, sim/não, pares de moedas); no máximo **uma** chamada LLM por turno,
-  só para intenção livre inconclusiva, com saída estruturada.
+  `exchange.py`): regras protegidas continuam determinísticas; com Groq, a
+  intenção em linguagem livre é classificada antes do parser e a resposta final
+  pode ser redigida pelo modelo, respeitando o orçamento de duas chamadas.
 - **Prompts** (`prompts/`): um system message = global + especialista ativo +
   estado mínimo sanitizado (sem PII, < 500 caracteres); só as tools do
   especialista ativo são expostas; IDs/versões testados contra `PROMPTS.md`.
@@ -63,11 +63,12 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
 - Entrevista de crédito completa com reanálise automática.
 - Cotação de moedas com tratamento de indisponibilidade.
 - Encerramento (`encerrar`, `sair`, `finalizar`…) prioritário em qualquer nó.
-- UI Streamlit com sessão persistente, Reiniciar (limpa a conversa sem apagar
-  persistência) e mascaramento de dados sensíveis.
+- UI Streamlit com apresentação inicial, ações responsivas, sessão persistente,
+  Reiniciar (limpa a conversa sem apagar persistência) e mascaramento de dados.
 - Auditoria técnica consultável por sessão + métricas que distinguem turnos com
   0 a 2 chamadas LLM.
-- 219 testes (unitários, integração e E2E) + `docs/TEST_PLAN.md` de homologação.
+- Mais de 200 testes (unitários, integração e E2E) + `docs/TEST_PLAN.md` de
+  homologação.
 
 ## Desafios enfrentados e soluções
 

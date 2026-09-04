@@ -26,6 +26,12 @@ _CONVERSATION_KEY = "conversation"
 _HISTORY_KEY = "history"
 _NOTICE_KEY = "notice"
 
+WELCOME_MESSAGE = (
+    "Olá! Eu sou o assistente virtual do Banco Ágil. Posso consultar seu limite "
+    "de crédito, solicitar aumento, conduzir uma entrevista de crédito e consultar "
+    "cotações de moedas. Para começar, conte como posso ajudar."
+)
+
 _CPF_FORMATTED_PATTERN = re.compile(r"\d{3}\.\d{3}\.\d{3}-\d{2}")
 _CPF_PLAIN_PATTERN = re.compile(r"\b\d{11}\b")
 _BIRTH_DATE_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
@@ -49,7 +55,7 @@ def init_session(session: MutableMapping[str, object]) -> None:
     if _CONVERSATION_KEY not in session:
         session[_CONVERSATION_KEY] = ConversationState()
     if _HISTORY_KEY not in session:
-        session[_HISTORY_KEY] = []
+        session[_HISTORY_KEY] = [AIMessage(content=WELCOME_MESSAGE)]
     if _NOTICE_KEY not in session:
         session[_NOTICE_KEY] = None
 
@@ -57,7 +63,7 @@ def init_session(session: MutableMapping[str, object]) -> None:
 def reset_conversation(session: MutableMapping[str, object]) -> None:
     """Reinicia a conversa em memoria sem apagar nenhuma persistencia."""
     session[_CONVERSATION_KEY] = ConversationState()
-    session[_HISTORY_KEY] = []
+    session[_HISTORY_KEY] = [AIMessage(content=WELCOME_MESSAGE)]
     session[_NOTICE_KEY] = None
 
 
@@ -198,11 +204,11 @@ def main() -> None:
     if state.ended:
         st.info("Atendimento encerrado. Reinicie para iniciar um novo atendimento.")
 
-    end_clicked, restart_clicked = st.columns(2)
-    if end_clicked.button("Encerrar atendimento"):
+    end_clicked, restart_clicked = st.columns(2, gap="small")
+    if end_clicked.button("Encerrar atendimento", use_container_width=True):
         end_conversation(session, service)
         st.rerun()
-    if restart_clicked.button("Reiniciar atendimento"):
+    if restart_clicked.button("Reiniciar atendimento", use_container_width=True):
         reset_conversation(session)
         st.rerun()
 

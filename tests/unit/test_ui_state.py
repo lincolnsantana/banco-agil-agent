@@ -13,6 +13,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage  # noqa
 
 import app  # noqa: E402
 from app import (  # noqa: E402
+    WELCOME_MESSAGE,
     build_conversation_service,
     end_conversation,
     history_for_display,
@@ -60,7 +61,10 @@ def test_init_session_preserves_existing_conversation() -> None:
     init_session(session)
 
     assert session["conversation"] is first_conversation
-    assert session["history"] == []
+    history = cast(list[BaseMessage], session["history"])
+    assert len(history) == 1
+    assert isinstance(history[0], AIMessage)
+    assert history[0].content == WELCOME_MESSAGE
     assert session["notice"] is None
 
 
@@ -74,7 +78,10 @@ def test_reset_conversation_keeps_persistence_files(tmp_path: Path) -> None:
     reset_conversation(session)
 
     assert isinstance(session["conversation"], ConversationState)
-    assert session["history"] == []
+    history = cast(list[BaseMessage], session["history"])
+    assert len(history) == 1
+    assert isinstance(history[0], AIMessage)
+    assert history[0].content == WELCOME_MESSAGE
     assert session["notice"] is None
     assert persistence.read_text(encoding="utf-8") == "conteudo"
 
@@ -107,7 +114,7 @@ def test_submit_empty_message_does_not_call_service() -> None:
     assert service.calls == []
     assert "Digite" in reply
     assert session["notice"] == reply
-    assert session["history"] == []
+    assert len(cast(list[BaseMessage], session["history"])) == 1
 
 
 def test_submit_ended_conversation_returns_restart_guidance() -> None:
@@ -124,7 +131,7 @@ def test_submit_ended_conversation_returns_restart_guidance() -> None:
     )
 
     assert "Reinicie" in reply
-    assert session["history"] == []
+    assert len(cast(list[BaseMessage], session["history"])) == 1
 
 
 def test_submit_hides_technical_details_on_integration_failure() -> None:
@@ -145,7 +152,7 @@ def test_submit_hides_technical_details_on_integration_failure() -> None:
     assert "Tente novamente" in reply
     assert "/tmp/x" not in reply
     assert "Traceback" not in reply
-    assert session["history"] == []
+    assert len(cast(list[BaseMessage], session["history"])) == 1
 
 
 def test_end_conversation_routes_through_service() -> None:

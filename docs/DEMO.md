@@ -15,11 +15,12 @@ Dados fictícios: CPF `11144477735`, nascimento `1990-05-20`. Sem chave de LLM.
 ## 0:45–2:00 — Triagem + Crédito (consulta e aumento)
 
 1. `streamlit run app.py`.
-2. Envie `11144477735` → pede o nascimento.
-3. Envie `1990-05-20` → `Dados confirmados. Como posso ajudar hoje?`
-4. Envie `qual é meu limite?` → `Seu limite atual é R$ 2.500,00...`
-5. Envie `quero aumentar meu limite` → pede o novo total.
-6. Envie `4000` → pedido aprovado e registrado (limite cadastrado inalterado).
+2. Mostre a apresentação inicial e as ações alinhadas acima da entrada.
+3. Envie `11144477735` → pede o nascimento.
+4. Envie `1990-05-20` → `Dados confirmados. Como posso ajudar hoje?`
+5. Envie `qual é meu limite?` → `Seu limite atual é R$ 2.500,00...`
+6. Envie `quero aumentar meu limite` → pergunta naturalmente o limite total.
+7. Envie `4000` → pedido aprovado e registrado (limite cadastrado inalterado).
 
 Comente: decisão por faixa de score em `score_limite.csv`, uma linha por pedido.
 
