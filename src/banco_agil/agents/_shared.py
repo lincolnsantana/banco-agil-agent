@@ -27,8 +27,18 @@ _END_REQUESTS = {
     "sair",
 }
 _END_PATTERN = re.compile(
-    r"^(?:por favor,? )?(?:(?:eu )?(?:quero|gostaria de|pode) )?"
-    r"(?:encerrar|encerre|finalizar|finalize|sair)(?: o atendimento)?$"
+    r"^(?:por favor,?\s*)?"
+    r"(?:(?:eu\s+)?(?:quero|desejo|gostaria\s+de|preciso|prefiro)\s+|"
+    r"(?:pode|podemos|vamos)\s+)?"
+    r"(?:encerrar|encerre|finalizar|finalize|terminar|termine|fechar|feche|parar|sair)"
+    r"(?:\s+(?:o|a|este|esta|esse|essa|minha|meu|do|da))?"
+    r"(?:\s+(?:atendimento|conversa|chat|sessao|servico))?"
+    r"(?:\s+(?:agora|por\s+favor|por\s+aqui))?$"
+)
+_END_CONTINUATION_PATTERN = re.compile(
+    r"^(?:eu\s+)?nao\s+(?:quero|desejo|gostaria\s+de|pretendo)\s+"
+    r"(?:mais\s+)?continuar(?:\s+com)?(?:\s+(?:o|a|este|esta|minha|meu))?"
+    r"(?:\s+(?:atendimento|conversa|chat|sessao|servico))?$"
 )
 _SAFE_LLM_WORDS = frozenset(
     {
@@ -318,8 +328,12 @@ def normalized_text(value: str) -> str:
 
 def end_reply_if_requested(state: ConversationState, user_text: str) -> str | None:
     """Encerra o atendimento antes de qualquer outra operacao."""
-    normalized = normalized_text(user_text)
-    if normalized not in _END_REQUESTS and _END_PATTERN.search(normalized) is None:
+    normalized = normalized_text(user_text).strip(".,!?;:'\"()[]-").strip()
+    if (
+        normalized not in _END_REQUESTS
+        and _END_PATTERN.fullmatch(normalized) is None
+        and _END_CONTINUATION_PATTERN.fullmatch(normalized) is None
+    ):
         return None
     end_conversation(state, EndReason.USER_REQUEST)
     return (

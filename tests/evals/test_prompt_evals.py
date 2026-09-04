@@ -27,14 +27,14 @@ from banco_agil.domain.models import (
 )
 from banco_agil.prompts.renderer import render_prompt
 
-DATASET_VERSION = "1.2.0"
+DATASET_VERSION = "1.3.0"
 PROMPT_VERSION = "global@1.3.0+triage@1.6.0"
 MAX_LATENCY_MS = 1000.0
 
 BASELINE = {
     "dataset_version": DATASET_VERSION,
     "prompt_version": PROMPT_VERSION,
-    "cases": 10,
+    "cases": 11,
     "accuracy": 1.0,
     "total_llm_calls": 0,
 }
@@ -65,6 +65,7 @@ INTENT_CASES = (
     IntentCase("o que você pode fazer?", Agent.TRIAGE, Intent.UNKNOWN),
     IntentCase("preciso resolver outra coisa", Agent.TRIAGE, Intent.UNKNOWN),
     IntentCase("quero encerrar", Agent.TRIAGE, Intent.UNKNOWN, True),
+    IntentCase("desejo encerrar a conversa.", Agent.TRIAGE, Intent.UNKNOWN, True),
 )
 
 EXTRACTION_CASES = (

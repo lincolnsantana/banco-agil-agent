@@ -83,7 +83,8 @@ contexto interno enviado ao Groq continua limitado às seis mais recentes.
 ## CT05 — Três falhas e encerramento
 
 1. Envie `01234567890` e `01/01/2000` três vezes (reinformando o CPF a cada vez).
-2. Em outra sessão autenticada, envie `encerrar` em cada especialista.
+2. Em outra sessão autenticada, envie `desejo encerrar a conversa.` e teste
+   também `podemos terminar o atendimento?` em cada especialista.
 
 Resultado esperado: após a terceira falha, encerramento cordial sem revelar qual
 campo estava incorreto; `encerrar` finaliza em qualquer nó com
@@ -124,7 +125,7 @@ o baseline no mesmo commit e registre abaixo a comparação entre versões
 
 | Versão de prompt | Dataset | Acerto | Chamadas LLM | Latência média | Consumo máx. |
 | --- | --- | --- | --- | --- | --- |
-| `global@1.3.0` + triagem `1.6.0` + câmbio `1.4.0` + demais `1.3.0` | `1.2.0` | 1.0 (10/10) | 0 | < 1.000 ms/caso | < 2.700 caracteres |
+| `global@1.3.0` + triagem `1.6.0` + câmbio `1.4.0` + demais `1.3.0` | `1.3.0` | 1.0 (11/11) | 0 | < 1.000 ms/caso | < 2.700 caracteres |
 
 ## Registro de execução
 

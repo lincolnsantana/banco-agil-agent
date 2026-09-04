@@ -381,6 +381,18 @@ def test_ended_turn_points_to_cpf_for_new_attendance(client: Client) -> None:
     assert "CPF" in turn.reply
 
 
+def test_natural_end_request_closes_conversation(client: Client) -> None:
+    harness = build_harness(client)
+    state = ConversationState(authenticated_client=client)
+
+    turn = harness.service.handle_turn(state, (), "desejo encerrar a conversa.")
+
+    assert state.ended
+    assert "encerrado" in turn.reply.casefold()
+    assert "CPF" in turn.reply
+    assert harness.exchange.calls == []
+
+
 def test_howto_increase_guides_to_credit_interview(
     client: Client,
 ) -> None:

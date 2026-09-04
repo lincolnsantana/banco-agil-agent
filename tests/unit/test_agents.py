@@ -1210,6 +1210,27 @@ def test_end_request_has_priority_in_every_specialist(client: Client) -> None:
     assert all("encerrado" in reply.casefold() for reply in replies)
 
 
+@pytest.mark.parametrize(
+    "user_text",
+    (
+        "desejo encerrar a conversa.",
+        "quero finalizar o chat",
+        "podemos terminar o atendimento?",
+        "gostaria de fechar esta conversa",
+        "não desejo mais continuar com o atendimento",
+        "parar por aqui",
+    ),
+)
+def test_end_parser_accepts_natural_requests(client: Client, user_text: str) -> None:
+    state = ConversationState(authenticated_client=client)
+
+    reply = handle_triage(state, user_text, FakeAuthenticationService(client))
+
+    assert state.ended
+    assert state.end_reason is EndReason.USER_REQUEST
+    assert "encerrado" in reply.casefold()
+
+
 def test_end_parser_does_not_stop_an_unfinished_credit_request(client: Client) -> None:
     state = ConversationState(
         authenticated_client=client,
