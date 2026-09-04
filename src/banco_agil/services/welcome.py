@@ -15,7 +15,7 @@ from banco_agil.prompts.registry import WELCOME_PROMPT_DEFINITION
 DEFAULT_WELCOME_MESSAGE = (
     "Olá! Eu sou o assistente virtual do Banco Ágil. Posso consultar seu limite "
     "de crédito, solicitar aumento, conduzir uma entrevista de crédito e consultar "
-    "cotações de moedas. A autenticação vem primeiro: por favor, informe seu CPF "
+    "cotações de moedas. Para darmos início à autenticação, informe seu CPF "
     "com 11 dígitos."
 )
 

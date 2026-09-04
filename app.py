@@ -200,8 +200,8 @@ def _get_runtime() -> tuple[ConversationService, GroqStructuredLlm | None]:
 
 def main() -> None:
     """Renderiza o chat e encaminha cada entrada ao serviço de conversa."""
-    st.set_page_config(page_title="Banco Ágil", page_icon="🏦")
-    st.title("Banco Ágil — Atendimento")
+    st.set_page_config(page_title="Banco Ágil - Atendimento", page_icon="🏦")
+    st.title("🏦 Banco Ágil - Atendimento")
     settings = Settings()
     st.caption(llm_status_message(settings))
     session = cast(MutableMapping[str, object], st.session_state)
