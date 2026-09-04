@@ -2,6 +2,7 @@
 
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from langchain_core.messages import SystemMessage
@@ -38,12 +39,12 @@ _EXPECTED_PROMPT_VERSIONS = {
 
 def test_registry_uses_documented_ids_versions_variables_and_limits() -> None:
     assert PROMPT_REGISTRY.global_prompt.prompt_id == "global"
-    assert PROMPT_REGISTRY.global_prompt.version == "1.4.0"
+    assert PROMPT_REGISTRY.global_prompt.version == "1.5.0"
     assert PROMPT_REGISTRY.global_prompt.character_limit == 1_200
     assert PROMPT_REGISTRY.global_prompt.variables == frozenset()
 
     assert WELCOME_PROMPT_DEFINITION.prompt_id == "welcome"
-    assert WELCOME_PROMPT_DEFINITION.version == "1.1.0"
+    assert WELCOME_PROMPT_DEFINITION.version == "1.2.0"
     assert WELCOME_PROMPT_DEFINITION.variables == frozenset()
     assert WELCOME_PROMPT_DEFINITION.character_limit == 800
 
@@ -82,7 +83,7 @@ def test_rendering_produces_one_bounded_system_message_for_active_agent(
 
     assert isinstance(rendered.system_message, SystemMessage)
     assert rendered.prompt_version == (
-        f"global@1.4.0+{agent.value}@{_EXPECTED_PROMPT_VERSIONS[agent]}"
+        f"global@1.5.0+{agent.value}@{_EXPECTED_PROMPT_VERSIONS[agent]}"
     )
     assert "{{" not in str(rendered.system_message.content)
     assert len(PROMPT_REGISTRY.global_prompt.template) <= 1_200
@@ -167,3 +168,23 @@ def test_only_active_specialist_tools_are_exposed(agent: Agent) -> None:
     rendered = render_prompt(ConversationState(active_agent=agent))
 
     assert {tool.name for tool in rendered.tools} == EXPECTED_TOOLS[agent]
+
+
+def test_no_agent_text_uses_em_dashes() -> None:
+    """Trava a regra de estilo no projeto inteiro, nao so no que foi ajustado."""
+    ofensores = []
+    for arquivo in sorted(Path("src/banco_agil").rglob("*.py")):
+        for numero, linha in enumerate(
+            arquivo.read_text(encoding="utf-8").splitlines(), start=1
+        ):
+            if "\u2014" in linha or "\u2013" in linha:
+                ofensores.append(f"{arquivo}:{numero}")
+
+    assert ofensores == []
+
+
+def test_global_prompt_demands_short_replies_without_em_dashes() -> None:
+    prompt = PROMPT_REGISTRY.global_prompt.template.casefold()
+
+    assert "travessão" in prompt
+    assert "três frases" in prompt

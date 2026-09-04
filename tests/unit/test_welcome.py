@@ -57,7 +57,7 @@ def test_welcome_is_generated_from_isolated_versioned_prompt() -> None:
     assert len(llm.calls) == 1
     turn_id, messages, version = llm.calls[0]
     assert turn_id == "welcome-fixed-id"
-    assert version == "welcome@1.1.0"
+    assert version == "welcome@1.2.0"
     assert len(messages) == 1
     assert isinstance(messages[0], SystemMessage)
     assert "{{" not in str(messages[0].content)

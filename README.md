@@ -69,9 +69,12 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
   pedir de novo o que o cliente acabou de dizer.
 - Consulta de limite e solicitação de aumento com decisão por score; aprovação atualiza `clientes.csv`.
 - Entrevista de crédito direta (pedido de score) ou após rejeição: o pedido de
-  score abre com uma mensagem que explica os cinco itens, o uso das respostas e
-  a ausência de garantia, e já faz a primeira pergunta; desistir no meio descarta
-  tudo. Reanálise quando houver limite pendente.
+  score abre com uma mensagem curta que explica os cinco itens, o uso das
+  respostas e a ausência de garantia, e já faz a primeira pergunta; desistir no
+  meio descarta tudo. Reanálise quando houver limite pendente.
+- Estilo único em todos os agentes: no máximo três frases por resposta e sem
+  travessão. A regra vale por prompt, por limite de schema na redação e por
+  normalização determinística da saída do modelo.
 - Cotação de moedas por nome (`dólar`, `euro`, `iene` etc.) ou par (`EUR-USD`),
   com tratamento humanizado de indisponibilidade e sem inventar valores.
 - Dúvidas sobre como aumentar limite ou score orientam a entrevista de crédito;

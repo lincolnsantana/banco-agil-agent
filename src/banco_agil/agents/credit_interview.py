@@ -17,17 +17,15 @@ from banco_agil.services.credit_interview import (
 from banco_agil.tools.banking import update_credit_score
 
 _INTERVIEW_OPENING = (
-    "Claro, posso cuidar disso com você agora. A entrevista de crédito é uma "
-    "conversa rápida de cinco perguntas: renda mensal, tipo de emprego, "
-    "despesas fixas, dependentes e dívidas ativas. Com essas respostas eu "
-    "recalculo seu score e atualizo seu cadastro — não posso garantir "
-    "aprovação, e você pode parar quando quiser, sem que nada fique guardado. "
-    "Vamos pela primeira: qual é sua renda mensal? Informe apenas o valor."
+    "Posso cuidar disso agora. A entrevista de crédito tem cinco perguntas "
+    "sobre renda, emprego, despesas, dependentes e dívidas. Com elas recalculo "
+    "seu score, sem garantir aprovação, e você pode parar quando quiser, sem "
+    "guardar nada. Qual é sua renda mensal?"
 )
 
 _INTERVIEW_ABANDONED = (
-    "Tudo bem, encerrei a entrevista e não guardei nada do que você contou. "
-    "Posso ajudar com outro serviço ou encerrar o atendimento."
+    "Tudo bem, encerrei a entrevista e não guardei nada. Posso ajudar com "
+    "outro serviço ou encerrar o atendimento?"
 )
 
 _QUESTIONS = {
@@ -127,8 +125,8 @@ def _score_completion_reply(previous_score: int, new_score: int) -> str:
     if new_score < previous_score:
         return (
             f"Seu score foi atualizado de {previous_score} para {new_score}, "
-            "uma queda pelos dados informados — e isso não define seus "
-            "próximos passos. Deseja continuar ou encerrar o atendimento?"
+            "uma queda pelos dados informados, e isso não define seus próximos "
+            "passos. Deseja continuar ou encerrar o atendimento?"
         )
     return (
         f"Seu score permanece em {new_score} após a entrevista. Deseja "

@@ -28,7 +28,7 @@ from banco_agil.domain.models import (
 from banco_agil.prompts.renderer import render_prompt
 
 DATASET_VERSION = "1.3.0"
-PROMPT_VERSION = "global@1.4.0+triage@1.6.0"
+PROMPT_VERSION = "global@1.5.0+triage@1.6.0"
 MAX_LATENCY_MS = 1000.0
 
 BASELINE = {
@@ -212,7 +212,7 @@ def test_prompt_consumption_matches_baseline() -> None:
         content = str(rendered.system_message.content)
         assert "{{" not in content
         assert len(content) < 2200 + 500
-        assert rendered.prompt_version.startswith("global@1.4.0+")
+        assert rendered.prompt_version.startswith("global@1.5.0+")
 
 
 def test_credit_handlers_stay_within_latency_budget() -> None:

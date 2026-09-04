@@ -13,8 +13,8 @@ from banco_agil.integrations.llm import StructuredLlm
 from banco_agil.prompts.registry import WELCOME_PROMPT_DEFINITION
 
 DEFAULT_WELCOME_MESSAGE = (
-    "Olá! 👋 Eu sou o assistente virtual do Banco Ágil. Para começar, informe seu CPF com 11 dígitos "
-    "para fazermos a autenticação."
+    "Olá! 👋 Eu sou o assistente virtual do Banco Ágil. Para começar, informe "
+    "seu CPF com 11 dígitos para fazermos a autenticação."
 )
 
 _REQUIRED_TOPICS = (

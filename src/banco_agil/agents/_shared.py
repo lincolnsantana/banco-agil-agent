@@ -296,6 +296,8 @@ _FACT_PATTERN = re.compile(
     r"\b[A-Z]{3}-[A-Z]{3}\b|\b\d{4}-\d{2}-\d{2}\b|(?:R\$\s*)?(?:\d[\d.,]*\d|\d)"
 )
 _FACT_TOKEN_PATTERN = re.compile(r"\[DADO_\d+\]")
+# Travessao e meia-risca; o hifen comum fica de fora de proposito.
+_DASH_PATTERN = re.compile(r"\s*[\u2013\u2014]\s*")
 _USER_TEXT_LIMIT = 280
 _MASKED_NUMBER = "esse valor"
 _CONTROL_PATTERN = re.compile(r"[\x00-\x1f\x7f]+")
@@ -316,7 +318,7 @@ _LEAK_PHRASES = (
     "texto validado",
     "dado_n",
 )
-_MAX_REWRITE_LENGTH = 600
+_MAX_REWRITE_LENGTH = 360
 
 
 class RewrittenReply(BaseModel):
@@ -459,11 +461,25 @@ def humanize_reply(
     except IntegrationError:
         return canonical_reply
 
-    rewritten = " ".join(result.reply.split())
+    rewritten = normalize_dashes(result.reply)
     restored = _restore_facts(rewritten, facts)
     if restored is None or not _preserves_decision(restored, canonical_reply):
         return canonical_reply
     return restored
+
+
+def normalize_dashes(text: str) -> str:
+    """Troca travessao por virgula sem deixar pontuacao duplicada.
+
+    Instruir o modelo nao basta: o travessao e habito forte de LLM, entao a
+    regra de estilo vale deterministicamente sobre a saida ja aceita. Hifen
+    comum fica intacto, para nao quebrar pares de moeda como USD-BRL.
+    """
+    replaced = _DASH_PATTERN.sub(", ", text)
+    replaced = re.sub(r"\s+,", ",", replaced)
+    replaced = re.sub(r",(?:\s*,)+", ", ", replaced)
+    replaced = re.sub(r",\s*([.!?])", r"\1", replaced)
+    return " ".join(replaced.split())
 
 
 def _mask_facts(text: str) -> tuple[str, dict[str, str]]:

@@ -409,7 +409,9 @@ def test_howto_increase_guides_to_credit_interview(
     assert state.pending_flow is None
 
 
-def test_score_review_routes_to_interview_and_asks_consent(client: Client) -> None:
+def test_score_review_opens_the_interview_and_asks_the_first_question(
+    client: Client,
+) -> None:
     harness = build_harness(client)
     state = ConversationState(authenticated_client=client)
 
@@ -417,7 +419,11 @@ def test_score_review_routes_to_interview_and_asks_consent(client: Client) -> No
 
     assert state.active_agent is Agent.CREDIT_INTERVIEW
     assert state.intent is Intent.CREDIT_INTERVIEW
-    assert "entrevista" in turn.reply.casefold()
+    lowered = turn.reply.casefold()
+    # Explica e ja comeca, em vez de perguntar se o cliente quer.
+    assert "entrevista" in lowered
+    assert "renda mensal" in lowered
+    assert "quer realizar a entrevista" not in lowered
 
 
 def test_interview_completion_reanalyzes_credit_in_same_turn(client: Client) -> None:

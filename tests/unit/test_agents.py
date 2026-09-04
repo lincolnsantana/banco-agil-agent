@@ -281,7 +281,7 @@ def test_humanization_rewrites_reply_without_exposing_data(
     assert reply == "Claro! Resposta canônica com R$ 2.500,00."
     _, messages, version = llm.calls[0]
     expected_version = _EXPECTED_PROMPT_VERSIONS[agent]
-    assert version == f"global@1.4.0+{agent.value}@{expected_version}"
+    assert version == f"global@1.5.0+{agent.value}@{expected_version}"
     assert "01234567890" not in str(messages)
     assert "2.500,00" not in str(messages)
     assert "R$ 2.500,00" not in str(messages)
@@ -623,7 +623,7 @@ def test_triage_uses_llm_only_for_ambiguous_authenticated_intent(
     assert state.active_agent is Agent.EXCHANGE
     assert len(llm.calls) == 1
     _, messages, version = llm.calls[0]
-    assert version == "global@1.4.0+triage@1.6.0"
+    assert version == "global@1.5.0+triage@1.6.0"
     assert "exterior" in str(messages[-1].content)
 
 
@@ -1012,11 +1012,14 @@ def test_interview_opens_explaining_before_the_first_question(
     # Explica o que sera perguntado, o que acontece com os dados e ja comeca.
     assert "cinco perguntas" in lowered
     assert "renda mensal" in lowered
-    assert "dívidas ativas" in lowered
+    assert "dívidas" in lowered
     assert "parar quando quiser" in lowered
     assert "garantir aprovação" in lowered
     assert "quer realizar a entrevista" not in lowered
     assert service.starts == [True]
+    # Humanizada, mas curta: o cliente nao le um parágrafo para começar.
+    assert len(reply) <= 260
+    assert "—" not in reply
 
 
 def test_interview_starts_when_triage_already_recognized_the_request(
