@@ -6,6 +6,7 @@ from collections.abc import MutableMapping, Sequence
 from dataclasses import dataclass
 from html import escape
 from typing import Protocol, cast
+from urllib.parse import quote
 
 import streamlit as st
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
@@ -173,6 +174,23 @@ _SUGGESTION_BY_KEY = {
     for suggestion in group
 }
 
+# A marca desenhada no proprio CSS: um data URI dispensa servir arquivo estatico
+# (o Streamlit so entrega o que esta em `static/`, desabilitado por padrao) e nao
+# depende de <svg> sobreviver a sanitizacao do markdown.
+_BRAND_MARK_SVG = (
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'>"
+    "<defs><linearGradient id='agil' x1='0' y1='0' x2='1' y2='1'>"
+    "<stop offset='0' stop-color='#4F46E5'/>"
+    "<stop offset='.5' stop-color='#A855F7'/>"
+    "<stop offset='1' stop-color='#FF5C7A'/>"
+    "</linearGradient></defs>"
+    "<circle cx='256' cy='256' r='256' fill='url(#agil)'/>"
+    "<path d='M128 384 L256 165 L384 384' fill='none' stroke='#FFFFFF' "
+    "stroke-width='66' stroke-linecap='round' stroke-linejoin='round'/>"
+    "</svg>"
+)
+_BRAND_MARK_URI = "data:image/svg+xml," + quote(_BRAND_MARK_SVG)
+
 _UI_STYLES = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
@@ -183,7 +201,7 @@ _UI_STYLES = """
        saem de currentColor, que segue theme.textColor do config.toml
        (branco no modo escuro, preto no claro); as de marca sao fixas. */
     --agil-accent: #0b5cad;
-    --agil-user-bubble: #0b5cad;
+    --agil-user-bubble: #6d28d9;
     --agil-ease: cubic-bezier(0.16, 1, 0.3, 1);
     --agil-control-radius: 999px;
     --agil-field-radius: 26px;
@@ -194,6 +212,29 @@ _UI_STYLES = """
     --agil-tint: color-mix(in srgb, currentColor 8%, transparent);
     --agil-control-fill: color-mix(in srgb, currentColor 13%, transparent);
     --agil-control-fill-hover: color-mix(in srgb, currentColor 20%, transparent);
+}
+
+/* A marca mora no header nativo, que ja e fixo no topo: um pseudo-elemento nao
+   entra na arvore do Streamlit, nao disputa espaco com o conteudo e acompanha
+   as duas telas. O texto herda a cor do tema; o simbolo vem do data URI. */
+[data-testid="stHeader"]::before {
+    position: fixed;
+    top: 0.8rem;
+    left: 1.25rem;
+    display: flex;
+    align-items: center;
+    height: 50px;
+    /* Abre a esquerda para o simbolo, que vem como fundo: recuo, 36px de
+       largura e o respiro ate o nome. */
+    padding: 0 1.25rem 0 3.4rem;
+    border-radius: var(--agil-control-radius);
+    background:
+        url("__BRAND_MARK__") 0.5rem center / 36px 36px no-repeat,
+        var(--agil-control-fill);
+    content: "Banco Ágil";
+    font-size: 0.9rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
 }
 
 html,
@@ -326,9 +367,9 @@ body,
 
 .landing-hero__brand {
     margin: 0;
-    font-size: clamp(1.5rem, 3.6vw, 1.95rem);
-    font-weight: 700;
-    letter-spacing: -0.035em;
+    font-size: clamp(2rem, 5.5vw, 3rem);
+    font-weight: 300;
+    letter-spacing: -0.02em;
     line-height: 1.2;
 }
 
@@ -362,13 +403,19 @@ body,
 }
 
 .st-key-quick_actions button {
-    min-height: 46px;
+    min-height: 54px;
     border: none !important;
     border-radius: var(--agil-control-radius) !important;
     background: var(--agil-control-fill) !important;
     font-size: 0.86rem;
-    font-weight: 500;
+    font-weight: 600;
     transition: transform 160ms ease, background 160ms ease;
+}
+
+/* O rotulo mora num <p> com peso proprio dentro do botao: sem alcancar esse
+   elemento, font-weight no <button> nao muda nada. */
+.st-key-quick_actions button p {
+    font-weight: 600 !important;
 }
 
 .st-key-quick_actions button:hover {
@@ -560,6 +607,14 @@ body,
 }
 
 @media (max-width: 640px) {
+    [data-testid="stHeader"]::before {
+        left: 0.8rem;
+        height: 44px;
+        padding: 0 1rem 0 3rem;
+        background-size: 32px 32px;
+        font-size: 0.82rem;
+    }
+
     [data-testid="stMainBlockContainer"] {
         /* O header tem a mesma altura no celular: o topo continua reservado. */
         padding: 4.5rem 0.8rem 6.5rem;
@@ -601,7 +656,7 @@ body,
     }
 }
 </style>
-"""
+""".replace("__BRAND_MARK__", _BRAND_MARK_URI)
 
 # Injetado apos a tela inicial ja estar na pagina: reaproveita o elemento
 # existente para animar a saida sem redesenhar os widgets.

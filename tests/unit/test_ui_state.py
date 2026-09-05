@@ -294,12 +294,29 @@ def test_history_for_display_never_exposes_raw_cpf() -> None:
     assert "01234567890" not in displayed[0][1]
 
 
-def test_brand_heading_lives_only_on_the_landing_screen() -> None:
+def test_brand_sits_in_the_native_header_on_both_screens() -> None:
+    from urllib.parse import unquote
+
     import app as ui
 
-    # A marca e a acolhida: o chat abre limpo, sem repetir cabeçalho.
-    # O texto do subtítulo é vitrine; o contrato é o elemento existir.
-    assert "Banco Ágil" in ui._LANDING_HERO
+    # Desenhada em pseudo-elemento do header: nao entra na arvore do Streamlit,
+    # entao vale nas duas telas sem nenhum elemento por tela.
+    assert '[data-testid="stHeader"]::before' in ui._UI_STYLES
+    assert 'content: "Banco Ágil"' in ui._UI_STYLES
+    assert "__BRAND_MARK__" not in ui._UI_STYLES
+    # O simbolo viaja embutido: sem arquivo estatico para servir.
+    assert ui._BRAND_MARK_URI.startswith("data:image/svg+xml,")
+    # As cores precisam do escape: um # cru encerraria a url() do CSS.
+    assert "#" not in ui._BRAND_MARK_URI
+    assert unquote(ui._BRAND_MARK_URI).endswith("</svg>")
+
+
+def test_hero_heading_lives_only_on_the_landing_screen() -> None:
+    import app as ui
+
+    # A acolhida abre a tela inicial; o chat abre limpo, sem repetir cabeçalho.
+    # Os textos são vitrine e mudam: o contrato é cada elemento existir.
+    assert 'class="landing-hero__brand"' in ui._LANDING_HERO
     assert 'class="landing-hero__subtitle"' in ui._LANDING_HERO
     assert not hasattr(ui, "_PAGE_HEADING")
 
