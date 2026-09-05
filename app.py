@@ -9,6 +9,7 @@ from typing import Protocol, cast
 
 import streamlit as st
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from streamlit.delta_generator import DeltaGenerator
 
 from banco_agil.agents.graph import GraphDependencies, build_graph
 from banco_agil.agents.state import ConversationState
@@ -615,10 +616,10 @@ _LANDING_EXIT_STYLE = """
 _LANDING_HERO = (
     '<div class="landing-hero">'
     '<div class="landing-hero__brand" role="heading" aria-level="1">'
-    "🏦 Banco Ágil: Atendimento Digital"
+    "O que você deseja consultar?"
     "</div>"
     '<div class="landing-hero__subtitle">'
-    "Consulte seu limite, peça aumento, análise de crédito e acompanhe "
+    "Você pode consultar limite, pedir aumento, análise de crédito e acompanhar "
     "cotações de moedas."
     "</div>"
     "</div>"
@@ -1047,9 +1048,12 @@ def _render_chat_suggestions(
     return selected
 
 
-def _render_landing(session: MutableMapping[str, object]) -> None:
+def _render_landing(
+    session: MutableMapping[str, object],
+    slot: DeltaGenerator,
+) -> None:
     """Mostra a apresentação inicial e abre o chat na primeira interação."""
-    with st.container(key="landing"):
+    with slot.container(key="landing"):
         st.markdown(_LANDING_HERO, unsafe_allow_html=True)
         # Dentro de um container o chat_input fica na propria coluna, e nao
         # ancorado ao rodape, o que mantem o campo centralizado na abertura.
@@ -1088,8 +1092,23 @@ def _process_message(
 def _render_chat(
     session: MutableMapping[str, object],
     service: ConversationServiceLike,
+    slot: DeltaGenerator,
 ) -> None:
     """Mostra o histórico, processa a entrada e oferece novo atendimento."""
+    with slot.container():
+        _render_chat_body(session, service)
+
+
+def _render_chat_body(
+    session: MutableMapping[str, object],
+    service: ConversationServiceLike,
+) -> None:
+    """Desenha barra inferior, atalho de volta e a conversa em si.
+
+    O atalho de volta fica fora do bloco animado da conversa: uma animacao de
+    `transform` no ancestral criaria bloco de contencao e tiraria o botao da
+    viewport, quebrando o `position: fixed`.
+    """
     with st.container(key="back_to_landing"):
         if st.button(
             "Início",
@@ -1144,10 +1163,20 @@ def main() -> None:
     else:
         init_session(session)
 
+    # Um slot por tela, sempre criados na mesma ordem. O slot da tela inativa
+    # fica vazio e apaga, ja no inicio deste run, o que ela desenhou no run
+    # anterior. Sem isso o navegador segura aquela arvore ate o run atual
+    # terminar - e o run do chat espera os pontos de digitacao, tempo de sobra
+    # para o campo e os atalhos da tela inicial aparecerem sobre a conversa.
+    # Limpar antes do rerun nao resolve: a fila de deltas pendentes e descartada
+    # quando o run seguinte comeca.
+    landing_slot = st.empty()
+    chat_slot = st.empty()
+
     if current_view(session) == LANDING_VIEW:
-        _render_landing(session)
+        _render_landing(session, landing_slot)
         return
-    _render_chat(session, service)
+    _render_chat(session, service, chat_slot)
 
 
 if __name__ == "__main__" and st.runtime.exists():
