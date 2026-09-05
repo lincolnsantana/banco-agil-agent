@@ -12,8 +12,8 @@ from banco_agil.agents.state import ConversationState, CreditInterviewDraft
 from banco_agil.domain.enums import Agent, EndReason, Intent
 from banco_agil.domain.exceptions import IntegrationError
 from banco_agil.domain.models import EndServiceResult
-from banco_agil.integrations.llm import StructuredLlm
-from banco_agil.prompts.renderer import render_prompt
+from banco_agil.integrations.llm import MAX_CALLS_PER_TURN, StructuredLlm
+from banco_agil.prompts.renderer import render_prompt, render_redirect_prompt
 from banco_agil.tools.banking import end_service
 
 _END_REQUESTS = {
@@ -40,49 +40,6 @@ _END_CONTINUATION_PATTERN = re.compile(
     r"(?:mais\s+)?continuar(?:\s+com)?(?:\s+(?:o|a|este|esta|minha|meu))?"
     r"(?:\s+(?:atendimento|conversa|chat|sessao|servico))?$"
 )
-_SAFE_LLM_WORDS = frozenset(
-    {
-        "ajuda",
-        "ajustar",
-        "alterar",
-        "banco",
-        "aumentar",
-        "aumento",
-        "cambio",
-        "consultar",
-        "cotacao",
-        "dolar",
-        "euro",
-        "entrevista",
-        "limite",
-        "modificar",
-        "mudar",
-        "quero",
-        "saber",
-        "taxa",
-        "cartao",
-        "coisa",
-        "credito",
-        "emprestimo",
-        "exterior",
-        "financiamento",
-        "moeda",
-        "outra",
-        "pontuacao",
-        "preciso",
-        "resolver",
-        "rever",
-        "score",
-        "servico",
-        "servicos",
-        "viagem",
-        "fazer",
-        "funciona",
-        "menu",
-        "opcoes",
-    }
-)
-
 HELP_REPLY = (
     "Claro! Posso consultar seu limite de crédito, solicitar um aumento de "
     "limite, conduzir a entrevista de crédito para revisar seu score e "
@@ -500,6 +457,216 @@ def parse_flow_answer(user_text: str) -> bool | None:
     return None
 
 
+HANDOFF_REPLY = "Certo. Vou prosseguir com sua solicitação."
+REFUSAL_REPLY = (
+    "Tudo bem, deixo isso de lado. Posso ajudar com limite de crédito, "
+    "entrevista de crédito ou cotação de moedas. O que deseja?"
+)
+
+# Pedidos que um especialista pode assumir no meio do fluxo de outro.
+RESUMABLE_INTENTS = frozenset(
+    {
+        Intent.CREDIT_LIMIT,
+        Intent.LIMIT_INCREASE,
+        Intent.CREDIT_INTERVIEW,
+        Intent.EXCHANGE_RATE,
+    }
+)
+_FLOW_LABELS = {
+    Intent.CREDIT_LIMIT: "consulta de limite de crédito",
+    Intent.LIMIT_INCREASE: "pedido de aumento de limite, aguardando o novo limite",
+    Intent.CREDIT_INTERVIEW: "entrevista de crédito, com perguntas sobre renda",
+    Intent.EXCHANGE_RATE: "consulta de cotação, aguardando a moeda",
+}
+
+# Palavras que pedem interrupcao do passo atual. Nenhuma aparece numa resposta
+# valida de valor, moeda, tipo de emprego ou sim/nao.
+_REFUSAL_MARKERS = frozenset(
+    {
+        "cancelar",
+        "cancela",
+        "cancele",
+        "cancelo",
+        "cancelamento",
+        "parar",
+        "pare",
+        "chega",
+        "basta",
+        "esquece",
+        "esqueca",
+        "esquecer",
+        "desisto",
+        "desisti",
+        "desistir",
+        "interromper",
+        "interrompe",
+    }
+)
+_REFUSAL_PHRASES = (
+    "nao quero mais",
+    "nao quero fazer",
+    "nao quero continuar",
+    "nao quero responder",
+    "nao quero seguir",
+    "nao quero isso",
+    "prefiro nao",
+    "melhor nao",
+    "agora nao",
+    "deixa pra la",
+    "deixa para la",
+    "deixa quieto",
+    "outra hora",
+    "mais tarde",
+    "depois eu faco",
+)
+# "para" sozinho pede parada; dentro de uma frase e preposicao comum.
+_REFUSAL_ALONE = frozenset({"para"})
+
+
+class FlowChange(BaseModel):
+    """Recusa do passo atual e pedido novo, classificados sem escolher agente.
+
+    E tambem o schema devolvido pelo Groq: a saida e um enum fechado, entao a
+    pior consequencia de uma classificacao errada e um redirecionamento que o
+    especialista de destino revalida.
+    """
+
+    declines_current: bool = False
+    requested_intent: Intent = Intent.UNKNOWN
+
+
+def agent_for_intent(intent: Intent) -> Agent:
+    """Traduz a intencao de atendimento no especialista responsavel."""
+    if intent is Intent.EXCHANGE_RATE:
+        return Agent.EXCHANGE
+    if intent is Intent.CREDIT_INTERVIEW:
+        return Agent.CREDIT_INTERVIEW
+    return Agent.CREDIT
+
+
+def detects_refusal(user_text: str) -> bool:
+    """Detecta recusa ou desistencia do passo atual sem usar LLM.
+
+    Generosa de proposito: onde e chamada, o texto ja deixou de ser resposta
+    valida ao passo. Um "nao" isolado conta como recusa aqui; a entrevista, que
+    aceita "nao" como resposta de dividas, trata essa excecao antes de chamar.
+    """
+    normalized = normalize_short_answer(user_text)
+    if normalized in _REFUSAL_ALONE:
+        return True
+    if any(phrase in normalized for phrase in _REFUSAL_PHRASES):
+        return True
+    if frozenset(_WORD_PATTERN.findall(normalized)) & _REFUSAL_MARKERS:
+        return True
+    return parse_flow_answer(user_text) is False
+
+
+def parse_flow_change(user_text: str, current_intent: Intent) -> FlowChange | None:
+    """Reconhece por parser um pedido diferente do fluxo atual ou uma recusa."""
+    requested = classify_banking_request(user_text)
+    if requested is not None and requested is not current_intent:
+        return FlowChange(requested_intent=requested)
+    if requested is None and detects_refusal(user_text):
+        return FlowChange(declines_current=True)
+    return None
+
+
+def infer_flow_change(
+    user_text: str,
+    current_intent: Intent,
+    llm: StructuredLlm | None,
+    turn_id: str,
+    recent_messages: Sequence[BaseMessage],
+) -> FlowChange | None:
+    """Pede ao LLM a recusa e o pedido que o parser nao reconheceu.
+
+    Usa uma chamada do orcamento do turno e deixa a outra para a redacao. O
+    texto viaja mascarado, sem CPF, data ou numero. Encerrar continua exigindo
+    pedido explicito: `end_service` vindo daqui vale como recusa, nao como fim.
+    Falha ou saida invalida devolvem None, e o especialista repete a pergunta.
+    """
+    if llm is None or not turn_id or llm.calls_remaining(turn_id) < MAX_CALLS_PER_TURN:
+        return None
+    safe_user_text = mask_user_text(user_text)
+    if not safe_user_text:
+        return None
+    rendered = render_redirect_prompt(_FLOW_LABELS.get(current_intent, "atendimento"))
+    messages: list[BaseMessage] = [
+        rendered.system_message,
+        *safe_history(recent_messages),
+        HumanMessage(content=safe_user_text),
+    ]
+    try:
+        decision = llm.invoke_structured(
+            turn_id,
+            messages,
+            FlowChange,
+            prompt_version=rendered.prompt_version,
+        )
+    except IntegrationError:
+        return None
+    return _normalize_inferred_change(decision, current_intent)
+
+
+def _normalize_inferred_change(
+    decision: FlowChange, current_intent: Intent
+) -> FlowChange | None:
+    requested = decision.requested_intent
+    if requested in RESUMABLE_INTENTS and requested is not current_intent:
+        return FlowChange(requested_intent=requested)
+    if requested is Intent.HELP:
+        return FlowChange(requested_intent=Intent.HELP)
+    if decision.declines_current or requested is Intent.END_SERVICE:
+        return FlowChange(declines_current=True)
+    return None
+
+
+def detect_flow_change(
+    user_text: str,
+    current_intent: Intent,
+    llm: StructuredLlm | None,
+    turn_id: str,
+    recent_messages: Sequence[BaseMessage],
+) -> FlowChange | None:
+    """Parser primeiro, LLM depois: a ordem e a mesma da triagem."""
+    change = parse_flow_change(user_text, current_intent)
+    if change is not None:
+        return change
+    return infer_flow_change(user_text, current_intent, llm, turn_id, recent_messages)
+
+
+def reset_flow(state: ConversationState) -> None:
+    """Descarta o passo em andamento: rascunho, limite pedido e oferta pendente.
+
+    Recusar no meio da coleta retira o consentimento, entao respostas parciais
+    da entrevista nao sobrevivem, e a reanalise que dependia delas tambem nao.
+    """
+    state.interview_draft = CreditInterviewDraft()
+    state.requested_limit = None
+    state.credit_reanalysis_pending = False
+    state.pending_flow = None
+
+
+def apply_flow_change(state: ConversationState, change: FlowChange) -> str:
+    """Aplica recusa ou redirecionamento e devolve a resposta canonica.
+
+    Pedido novo entrega o turno ao especialista dele, que substitui esta
+    resposta no mesmo turno; recusa sem pedido devolve a conversa a triagem.
+    """
+    reset_flow(state)
+    if change.requested_intent is Intent.HELP:
+        state.intent = Intent.UNKNOWN
+        state.active_agent = Agent.TRIAGE
+        return HELP_REPLY
+    if change.requested_intent in RESUMABLE_INTENTS:
+        state.intent = change.requested_intent
+        state.active_agent = agent_for_intent(change.requested_intent)
+        return HANDOFF_REPLY
+    state.intent = Intent.UNKNOWN
+    state.active_agent = Agent.TRIAGE
+    return REFUSAL_REPLY
+
+
 _FACT_PATTERN = re.compile(
     r"\b[A-Z]{3}-[A-Z]{3}\b|\b\d{4}-\d{2}-\d{2}\b|(?:R\$\s*)?(?:\d[\d.,]*\d|\d)"
 )
@@ -596,16 +763,6 @@ def parse_confirmation(value: str) -> bool | None:
     return parse_flow_answer(value)
 
 
-def sanitize_user_text(value: str) -> str:
-    """Seleciona somente termos nao sensiveis antes de chamar o LLM.
-
-    Usado onde a entrada alimenta classificacao de intencao, nao redacao: ali
-    o texto livre nao acrescenta nada e so amplia a superficie de injecao.
-    """
-    words = re.findall(r"[a-z]+", normalized_text(value))
-    return " ".join(word for word in words if word in _SAFE_LLM_WORDS)
-
-
 def mask_user_text(value: str) -> str:
     """Preserva a pergunta do cliente sem PII, numero ou marcacao estrutural.
 
@@ -655,7 +812,7 @@ def humanize_reply(
     safe_user_text = mask_user_text(user_text) or "pedido bancario"
     messages: list[BaseMessage] = [
         rendered.system_message,
-        *_safe_history(recent_messages),
+        *safe_history(recent_messages),
         HumanMessage(
             content=(
                 "Redija a resposta final completa a partir do texto validado "
@@ -745,7 +902,8 @@ def _preserves_decision(rewritten: str, canonical_reply: str) -> bool:
     return True
 
 
-def _safe_history(messages: Sequence[BaseMessage]) -> list[BaseMessage]:
+def safe_history(messages: Sequence[BaseMessage]) -> list[BaseMessage]:
+    """Mascara as mensagens recentes antes de enviá-las ao LLM."""
     safe_messages: list[BaseMessage] = []
     for message in messages[-5:]:
         safe_content = mask_user_text(str(message.content))

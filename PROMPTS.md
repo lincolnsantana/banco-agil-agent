@@ -15,7 +15,10 @@ PROMPT_GLOBAL + PROMPT_DO_ESPECIALISTA_ATIVO + ESTADO_MÍNIMO
 Nunca enviar prompts de especialistas inativos.
 A apresentação inicial usa somente o prompt `welcome`, sem estado, histórico ou
 tools. Na triagem, autenticação e rotas claras são determinísticas; somente texto
-pós-autenticação ainda ambíguo envia o prompt de triagem ao provedor.
+pós-autenticação ainda ambíguo envia o prompt de triagem ao provedor. O prompt
+`redirect` não pertence a um especialista: qualquer nó o usa, composto com o
+global, quando o texto não é resposta válida ao passo atual e o parser não
+reconheceu recusa nem pedido novo.
 
 ## 2. Versões e limites
 
@@ -28,6 +31,7 @@ pós-autenticação ainda ambíguo envia o prompt de triagem ao provedor.
 | `credit_interview` | `1.5.0` | 1.000 |
 | `exchange` | `1.5.0` | 1.000 |
 | `knowledge` | `1.0.0` | 1.000 |
+| `redirect` | `1.0.0` | 1.000 |
 
 O prompt global somado ao especialista deve permanecer abaixo de 2.200
 caracteres, antes do estado. O estado dinâmico deve ficar abaixo de 500
@@ -252,6 +256,40 @@ O conteúdo recuperado vem do catálogo curado em
 `src/banco_agil/knowledge/catalog.py`, não do modelo. A recuperação é por
 sobreposição de termos, sem embedding nem banco vetorial.
 
+## 10.1. Prompt de recusa e redirecionamento
+
+ID: `redirect`  
+Versão: `1.0.0`  
+Variável: `flow` (rótulo curto do passo em andamento, sem dado do cliente)
+
+```text
+Tarefa: classificar o turno, sem responder ao cliente.
+
+O cliente está no meio de: {{ flow }}. A última mensagem do assistente pediu a
+próxima informação desse passo. Decida se ele recusa, desiste ou adia esse passo
+(declines_current) e qual serviço pede em vez disso (requested_intent):
+credit_limit para consultar limite, limit_increase para aumentar limite,
+credit_interview para entrevista ou score, exchange_rate para cotação de moedas,
+help para conhecer os serviços, end_service para encerrar, unknown quando não
+pede nada novo.
+
+Resposta ao passo atual, mesmo torta, não é recusa nem pedido novo: valor,
+moeda, tipo de emprego e sim ou não devolvem unknown sem recusa. Dúvida sobre o
+passo atual também é unknown. Só marque recusa quando o cliente disser que não
+quer, não vai ou prefere parar. Nunca deduza serviço que ele não citou.
+```
+
+Saída estruturada: `{ "declines_current": bool, "requested_intent": Intent }`.
+O código normaliza a saída antes de agir: só `credit_limit`, `limit_increase`,
+`credit_interview` e `exchange_rate` diferentes do fluxo atual redirecionam;
+`help` reapresenta os serviços; `end_service` vale como recusa, porque encerrar
+continua exigindo pedido explícito e determinístico; `information`, o próprio
+fluxo ou saída inválida não mudam nada e o especialista repete a pergunta.
+Não recebe estado nem tools. Usado por Crédito (aguardando valor), Câmbio
+(aguardando moeda), Entrevista (consentimento e resposta inválida) e Triagem
+(confirmação de oferta pendente). Nunca é chamado para valor, moeda, tipo de
+emprego, `sim` ou `não`, e só pelo primeiro nó do turno.
+
 ## 11. Carregamento e composição
 
 Os templates de runtime ficam em `src/banco_agil/prompts/templates.py`. O
@@ -292,6 +330,12 @@ consentimento antes de coletar dados; com limite rejeitado, conclui com
 reanálise.
 Crédito, Entrevista e Câmbio usam o Groq para redigir o canônico protegido.
 
+Dentro de um fluxo, texto que não é resposta válida ao passo atual passa pelo
+parser de recusa e de pedido novo; se ele não reconhecer nada, o prompt
+`redirect` pede ao Groq a mesma classificação. Pedido novo entrega o turno ao
+especialista dele no mesmo turno; recusa descarta o passo e volta à triagem.
+Valor, moeda, tipo de emprego, `sim` e `não` nunca chegam a essa chamada.
+
 Quando houver credencial, o modelo redige a resposta final completa a partir de
 duas entradas: o canônico com fatos mascarados (`[DADO_N]`) e a pergunta do
 cliente com PII mascarada. A pergunta chega como mensagem de usuário e serve
@@ -299,15 +343,17 @@ para o especialista reconhecer o pedido e responder no tom de quem perguntou;
 ela orienta o tom, nunca o conteúdo.
 
 Antes de enviar, a pergunta perde CPF e nascimento, tem números trocados por
-termo neutro, perde caracteres de controle e de estrutura — inclusive
-colchetes, para que ninguém forje um `[DADO_N]` — e é truncada. A triagem segue
-com o filtro por termos permitidos, porque ali a entrada alimenta classificação
-de intenção, não redação.
+termo neutro, perde caracteres de controle e de estrutura, inclusive colchetes,
+para que ninguém forje um `[DADO_N]`, e é truncada. A mesma máscara vale para a
+classificação de intenção e de recusa: negação e contexto são o que distingue
+"não quero mais" de "quero mais", e o antigo filtro por termos os descartava. O
+risco fica contido porque a saída é um enum fechado que o código revalida.
 
 A saída só é aceita se preservar todos os marcadores, com números subconjunto do
 canônico e sem inverter decisão, valores ou perguntas; qualquer violação usa o
 canônico. Essa guarda é o que sustenta a abertura da entrada e não pode ser
-afrouxada. Cada turno de especialista faz no máximo uma chamada.
+afrouxada. Cada turno faz no máximo uma chamada de classificação e uma de
+redação; a classificação só acontece se ainda sobrar a chamada da redação.
 
 Configuração inicial:
 
@@ -327,6 +373,9 @@ HISTORY_MAX_MESSAGES=6
 | Autenticação, encerramento ou rota clara | Zero chamada de classificação |
 | Rota pós-autenticação ambígua | Uma classificação, com fallback determinístico |
 | Turno de Crédito, Entrevista ou Câmbio | Uma redação; até duas chamadas se a rota foi ambígua |
+| Recusa ou pedido novo reconhecido pelo parser | Zero chamada de classificação; redireciona no mesmo turno |
+| Texto inválido no passo atual, sem parser | Uma classificação `redirect`, com fallback de repetir a pergunta |
+| Valor, moeda, `sim` ou `não` no passo atual | Zero chamada `redirect` |
 | Redação com fato novo ou marcador perdido | Usa a resposta canônica |
 | Prompt global + especialista | Abaixo do limite de caracteres |
 | Especialista ativo | Somente suas tools e seu prompt são enviados |

@@ -28,6 +28,7 @@ from banco_agil.agents.router import (
     GraphState,
     GraphUpdate,
     route_after_interview,
+    route_after_specialist,
     route_after_triage,
     route_entry,
 )
@@ -181,11 +182,19 @@ def build_graph(dependencies: GraphDependencies) -> ConversationGraph:
         )
         return _handler_update(state, reply, Agent.TRIAGE)
 
+    def _intent_llm(state: GraphState) -> StructuredLlm | None:
+        # So o primeiro no do turno pode classificar recusa: quem recebe o
+        # turno de outro no ja esta respondendo a um texto classificado.
+        return dependencies.llm if state["step_count"] == 0 else None
+
     def credit_node(state: GraphState) -> GraphUpdate:
         reply = handle_credit(
             state["conversation"],
             state["user_text"],
             dependencies.credit,
+            llm=_intent_llm(state),
+            turn_id=state["turn_id"],
+            recent_messages=_previous_messages(state),
         )
         return _handler_update(state, reply, Agent.CREDIT)
 
@@ -194,6 +203,9 @@ def build_graph(dependencies: GraphDependencies) -> ConversationGraph:
             state["conversation"],
             state["user_text"],
             dependencies.credit_interview,
+            llm=_intent_llm(state),
+            turn_id=state["turn_id"],
+            recent_messages=_previous_messages(state),
         )
         return _handler_update(state, reply, Agent.CREDIT_INTERVIEW)
 
@@ -202,6 +214,9 @@ def build_graph(dependencies: GraphDependencies) -> ConversationGraph:
             state["conversation"],
             state["user_text"],
             dependencies.exchange,
+            llm=_intent_llm(state),
+            turn_id=state["turn_id"],
+            recent_messages=_previous_messages(state),
         )
         return _handler_update(state, reply, Agent.EXCHANGE)
 
@@ -236,8 +251,8 @@ def build_graph(dependencies: GraphDependencies) -> ConversationGraph:
     builder.add_conditional_edges(START, route_entry)
     builder.add_conditional_edges("triage", route_after_triage)
     builder.add_conditional_edges("credit_interview", route_after_interview)
-    builder.add_edge("credit", "humanize")
-    builder.add_edge("exchange", "humanize")
+    builder.add_conditional_edges("credit", route_after_specialist)
+    builder.add_conditional_edges("exchange", route_after_specialist)
     builder.add_edge("knowledge", "humanize")
     builder.add_edge("limit_guard", "finalize")
     builder.add_edge("humanize", "finalize")

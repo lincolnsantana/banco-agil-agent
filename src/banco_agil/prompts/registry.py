@@ -13,6 +13,7 @@ from banco_agil.prompts.templates import (
     EXCHANGE_PROMPT,
     GLOBAL_PROMPT,
     KNOWLEDGE_PROMPT,
+    REDIRECT_PROMPT,
     TRIAGE_PROMPT,
     WELCOME_PROMPT,
 )
@@ -33,6 +34,7 @@ _CREDIT_PROMPT_VERSION = "1.4.0"
 _CREDIT_INTERVIEW_PROMPT_VERSION = "1.5.0"
 _EXCHANGE_PROMPT_VERSION = "1.5.0"
 _KNOWLEDGE_PROMPT_VERSION = "1.0.0"
+_REDIRECT_PROMPT_VERSION = "1.0.0"
 
 
 @dataclass(frozen=True)
@@ -97,6 +99,16 @@ WELCOME_PROMPT_DEFINITION = PromptDefinition(
     template=WELCOME_PROMPT,
     variables=frozenset(),
     character_limit=800,
+)
+
+# Classifica recusa e troca de assunto no meio de um fluxo; nao pertence a um
+# especialista, porque qualquer um deles pode precisar dela.
+REDIRECT_PROMPT_DEFINITION = PromptDefinition(
+    prompt_id="redirect",
+    version=_REDIRECT_PROMPT_VERSION,
+    template=REDIRECT_PROMPT,
+    variables=frozenset({"flow"}),
+    character_limit=1_000,
 )
 
 

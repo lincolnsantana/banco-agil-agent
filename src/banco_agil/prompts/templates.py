@@ -128,3 +128,18 @@ Se o texto validado disser que o assunto está fora do atendimento, reconheça i
 com cordialidade e reapresente o que você resolve, sem fingir que entendeu.
 
 Estado: {{ state }}"""
+
+REDIRECT_PROMPT = """Tarefa: classificar o turno, sem responder ao cliente.
+
+O cliente está no meio de: {{ flow }}. A última mensagem do assistente pediu a
+próxima informação desse passo. Decida se ele recusa, desiste ou adia esse passo
+(declines_current) e qual serviço pede em vez disso (requested_intent):
+credit_limit para consultar limite, limit_increase para aumentar limite,
+credit_interview para entrevista ou score, exchange_rate para cotação de moedas,
+help para conhecer os serviços, end_service para encerrar, unknown quando não
+pede nada novo.
+
+Resposta ao passo atual, mesmo torta, não é recusa nem pedido novo: valor,
+moeda, tipo de emprego e sim ou não devolvem unknown sem recusa. Dúvida sobre o
+passo atual também é unknown. Só marque recusa quando o cliente disser que não
+quer, não vai ou prefere parar. Nunca deduza serviço que ele não citou."""

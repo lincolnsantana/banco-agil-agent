@@ -1,11 +1,16 @@
 """No de credito para consulta e solicitacao de aumento."""
 
 import re
+from collections.abc import Sequence
 from decimal import Decimal, InvalidOperation
+
+from langchain_core.messages import BaseMessage
 
 from banco_agil.agents._shared import (
     HELP_REPLY,
+    apply_flow_change,
     authentication_reply_if_missing,
+    detect_flow_change,
     end_reply_if_requested,
     format_money,
     is_help_request,
@@ -14,6 +19,7 @@ from banco_agil.agents.state import ConversationState
 from banco_agil.domain.enums import Agent, CreditRequestStatus, Intent
 from banco_agil.domain.exceptions import DomainError, RepositoryError
 from banco_agil.domain.models import CreditLimitResult, LimitIncreaseResult
+from banco_agil.integrations.llm import StructuredLlm
 from banco_agil.services.credit import CreditService
 from banco_agil.tools.banking import get_credit_limit, request_limit_increase
 
@@ -22,8 +28,16 @@ def handle_credit(
     state: ConversationState,
     user_text: str,
     service: CreditService,
+    *,
+    llm: StructuredLlm | None = None,
+    turn_id: str = "",
+    recent_messages: Sequence[BaseMessage] = (),
 ) -> str:
-    """Processa consulta, aumento ou reanalise de credito sem LLM."""
+    """Processa consulta, aumento ou reanalise de credito.
+
+    Valores e decisoes continuam deterministicos; o LLM so entra quando o texto
+    nao e um valor, para saber se o cliente desistiu ou pediu outra coisa.
+    """
     end_reply = end_reply_if_requested(state, user_text)
     if end_reply is not None:
         return end_reply
@@ -50,6 +64,11 @@ def handle_credit(
         )
 
     if state.intent is not Intent.LIMIT_INCREASE:
+        change = detect_flow_change(
+            user_text, state.intent, llm, turn_id, recent_messages
+        )
+        if change is not None:
+            return apply_flow_change(state, change)
         return (
             "Posso consultar seu limite atual ou analisar um pedido de aumento. "
             "Qual dessas opções você prefere?"
@@ -57,6 +76,11 @@ def handle_credit(
 
     requested_limit = _parse_money(user_text)
     if requested_limit is None:
+        change = detect_flow_change(
+            user_text, Intent.LIMIT_INCREASE, llm, turn_id, recent_messages
+        )
+        if change is not None:
+            return apply_flow_change(state, change)
         return (
             "Claro, posso analisar o aumento com você. Qual é o limite total que "
             "gostaria de ter? Por exemplo: R$ 4.000,00."

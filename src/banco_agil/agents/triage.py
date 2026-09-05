@@ -3,19 +3,25 @@
 import re
 from collections.abc import Sequence
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.messages import BaseMessage, HumanMessage
 from pydantic import BaseModel
 
 from banco_agil.agents._shared import (
+    HANDOFF_REPLY,
     HELP_REPLY,
+    RESUMABLE_INTENTS,
+    agent_for_intent,
+    apply_flow_change,
     classify_banking_request,
     detect_howto_topic,
     detects_information_question,
     end_conversation,
     end_reply_if_requested,
+    infer_flow_change,
     is_help_request,
+    mask_user_text,
     parse_flow_answer,
-    sanitize_user_text,
+    safe_history,
 )
 from banco_agil.agents.state import ConversationState
 from banco_agil.domain.enums import Agent, EndReason, Intent
@@ -54,7 +60,7 @@ def handle_triage(
     if state.pending_flow is not None and not _supersedes_pending_flow(
         user_text, state.pending_flow
     ):
-        return _handle_flow_answer(state, user_text)
+        return _handle_flow_answer(state, user_text, llm, turn_id, recent_messages)
     if state.pending_flow is not None:
         # Pedido novo no lugar da confirmacao: a oferta anterior caduca, em vez
         # de repetir "nao consegui confirmar" enquanto o cliente muda de assunto.
@@ -95,7 +101,7 @@ def handle_triage(
 
     state.intent = intent
     state.active_agent = agent_for_intent(intent)
-    return "Certo. Vou prosseguir com sua solicitação."
+    return HANDOFF_REPLY
 
 
 def _handle_howto(state: ConversationState, topic: Intent) -> str:
@@ -103,13 +109,13 @@ def _handle_howto(state: ConversationState, topic: Intent) -> str:
     if topic is Intent.CREDIT_LIMIT:
         state.intent = Intent.CREDIT_LIMIT
         state.active_agent = Agent.CREDIT
-        return "Certo. Vou prosseguir com sua solicitação."
+        return HANDOFF_REPLY
     if topic is Intent.CREDIT_INTERVIEW:
         # Perguntar como melhorar o score ja e pedir a entrevista: o
         # especialista abre explicando e faz a primeira pergunta no mesmo turno.
         state.intent = Intent.CREDIT_INTERVIEW
         state.active_agent = Agent.CREDIT_INTERVIEW
-        return "Certo. Vou prosseguir com sua solicitação."
+        return HANDOFF_REPLY
     if topic is Intent.LIMIT_INCREASE:
         state.pending_flow = Intent.CREDIT_INTERVIEW
         state.intent = Intent.UNKNOWN
@@ -148,15 +154,31 @@ def _supersedes_pending_flow(user_text: str, pending: Intent | None) -> bool:
     return detects_information_question(user_text)
 
 
-def _handle_flow_answer(state: ConversationState, user_text: str) -> str:
-    """Confirma o fluxo pendente com resposta ampla ou repete a pergunta."""
+def _handle_flow_answer(
+    state: ConversationState,
+    user_text: str,
+    llm: StructuredLlm | None,
+    turn_id: str,
+    recent_messages: Sequence[BaseMessage],
+) -> str:
+    """Confirma o fluxo pendente com resposta ampla ou repete a pergunta.
+
+    Resposta que o parser nao le vai ao LLM, que pode reconhecer recusa ou um
+    pedido diferente da oferta; sem isso, a pergunta e repetida.
+    """
     target = state.pending_flow
     answer = parse_flow_answer(user_text)
+    if answer is None and target is not None:
+        change = infer_flow_change(user_text, target, llm, turn_id, recent_messages)
+        if change is not None and not change.declines_current:
+            return apply_flow_change(state, change)
+        if change is not None:
+            answer = False
     if answer is True and target is not None:
         state.pending_flow = None
         state.intent = target
         state.active_agent = agent_for_intent(target)
-        return "Certo. Vou prosseguir com sua solicitação."
+        return HANDOFF_REPLY
     if answer is False:
         state.pending_flow = None
         state.intent = Intent.UNKNOWN
@@ -232,26 +254,6 @@ def _handle_authentication(
     )
 
 
-# Pedidos que fazem sentido retomar sozinhos assim que a autenticacao conclui.
-_RESUMABLE_INTENTS = frozenset(
-    {
-        Intent.CREDIT_LIMIT,
-        Intent.LIMIT_INCREASE,
-        Intent.CREDIT_INTERVIEW,
-        Intent.EXCHANGE_RATE,
-    }
-)
-
-
-def agent_for_intent(intent: Intent) -> Agent:
-    """Traduz a intencao de atendimento no especialista responsavel."""
-    if intent is Intent.EXCHANGE_RATE:
-        return Agent.EXCHANGE
-    if intent is Intent.CREDIT_INTERVIEW:
-        return Agent.CREDIT_INTERVIEW
-    return Agent.CREDIT
-
-
 def _remember_requested_intent(state: ConversationState, user_text: str) -> None:
     """Guarda o pedido feito antes da autenticacao, preservando o primeiro.
 
@@ -261,7 +263,7 @@ def _remember_requested_intent(state: ConversationState, user_text: str) -> None
     if state.deferred_intent is not None:
         return
     intent = _deterministic_intent(user_text)
-    if intent in _RESUMABLE_INTENTS:
+    if intent in RESUMABLE_INTENTS:
         state.deferred_intent = intent
 
 
@@ -292,16 +294,21 @@ def _llm_intent(
     turn_id: str,
     recent_messages: Sequence[BaseMessage],
 ) -> Intent | None:
-    """Classifica somente texto pós-autenticação não resolvido pelo parser."""
+    """Classifica somente texto pós-autenticação não resolvido pelo parser.
+
+    O texto viaja mascarado, sem CPF, data ou número, em vez de filtrado por
+    termos permitidos: recusa e pedido vago precisam de negação e contexto, e
+    a saída é um enum fechado que a triagem ainda valida.
+    """
     if llm is None or not turn_id:
         return None
-    safe_user_text = sanitize_user_text(user_text)
+    safe_user_text = mask_user_text(user_text)
     if not safe_user_text:
         return None
     rendered = render_prompt(state)
     messages: list[BaseMessage] = [
         rendered.system_message,
-        *_sanitized_history(recent_messages),
+        *safe_history(recent_messages),
         HumanMessage(content=safe_user_text),
     ]
     try:
@@ -314,16 +321,3 @@ def _llm_intent(
     except IntegrationError:
         return None
     return decision.intent
-
-
-def _sanitized_history(messages: Sequence[BaseMessage]) -> list[BaseMessage]:
-    sanitized: list[BaseMessage] = []
-    for message in messages[-5:]:
-        if not isinstance(message, (HumanMessage, AIMessage)):
-            continue
-        safe_content = sanitize_user_text(str(message.content))
-        if not safe_content:
-            continue
-        message_type = AIMessage if isinstance(message, AIMessage) else HumanMessage
-        sanitized.append(message_type(content=safe_content))
-    return sanitized

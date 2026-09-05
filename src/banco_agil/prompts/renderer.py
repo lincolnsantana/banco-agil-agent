@@ -8,7 +8,12 @@ from langchain_core.tools import BaseTool
 
 from banco_agil.agents.state import ConversationState, CreditInterviewDraft
 from banco_agil.domain.enums import Agent
-from banco_agil.prompts.registry import PROMPT_REGISTRY, PromptRegistry
+from banco_agil.prompts.registry import (
+    PROMPT_REGISTRY,
+    REDIRECT_PROMPT_DEFINITION,
+    PromptDefinition,
+    PromptRegistry,
+)
 
 CompactValue = bool | int | str | list[str]
 CompactState = dict[str, CompactValue]
@@ -84,6 +89,33 @@ def render_prompt(
             f"+{specialist.prompt_id}@{specialist.version}"
         ),
         compact_state_json=state_json,
+    )
+
+
+def render_redirect_prompt(
+    flow: str,
+    registry: PromptRegistry = PROMPT_REGISTRY,
+    definition: PromptDefinition = REDIRECT_PROMPT_DEFINITION,
+) -> RenderedPrompt:
+    """Compoe global e classificador de recusa para o fluxo em andamento.
+
+    Nao envia estado nem tools: a saida e um schema fechado de intencao, e o
+    fluxo atual chega como texto curto em vez de contexto completo.
+    """
+    static_length = len(registry.global_prompt.template) + len(definition.template)
+    if static_length >= _COMBINED_PROMPT_LIMIT:
+        raise ValueError("combined prompt exceeds character limit")
+    content = "\n\n".join(
+        (registry.global_prompt.render(), definition.render(flow=flow))
+    )
+    return RenderedPrompt(
+        system_message=SystemMessage(content=content),
+        tools=(),
+        prompt_version=(
+            f"{registry.global_prompt.prompt_id}@{registry.global_prompt.version}"
+            f"+{definition.prompt_id}@{definition.version}"
+        ),
+        compact_state_json="{}",
     )
 
 

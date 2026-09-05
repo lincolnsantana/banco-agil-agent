@@ -10,9 +10,14 @@ from langchain_core.messages import BaseMessage
 from pydantic import BaseModel
 
 from banco_agil.agents._shared import (
+    HANDOFF_REPLY,
+    REFUSAL_REPLY,
     classify_banking_request,
+    detects_refusal,
     humanize_reply,
+    infer_flow_change,
     mask_user_text,
+    parse_flow_change,
 )
 from banco_agil.agents.credit import handle_credit
 from banco_agil.agents.credit_interview import (
@@ -1728,3 +1733,535 @@ def test_ending_the_service_midway_discards_the_draft(client: Client) -> None:
     assert state.interview_draft.monthly_income is None
     assert state.interview_draft.consent_given is False
     assert state.requested_limit is None
+
+
+# --- Recusa e troca de assunto no meio de um fluxo -------------------------
+
+
+@pytest.mark.parametrize(
+    "user_text",
+    (
+        "não quero mais",
+        "cancela isso",
+        "deixa pra lá",
+        "prefiro não",
+        "não tenho interesse",
+        "depois",
+        "não",
+    ),
+)
+def test_detects_refusal_reads_common_ways_of_giving_up(user_text: str) -> None:
+    assert detects_refusal(user_text)
+
+
+@pytest.mark.parametrize("user_text", ("5000", "sim", "formal", "quero sim", "euro"))
+def test_detects_refusal_ignores_valid_answers(user_text: str) -> None:
+    assert not detects_refusal(user_text)
+
+
+def test_parse_flow_change_recognizes_a_different_request() -> None:
+    change = parse_flow_change("cancela isso, quero ver o dólar", Intent.LIMIT_INCREASE)
+
+    assert change is not None
+    assert change.requested_intent is Intent.EXCHANGE_RATE
+    assert not change.declines_current
+
+
+def test_parse_flow_change_keeps_the_same_request_in_flow() -> None:
+    # Reafirmar o pedido atual nao e troca de assunto: o no continua o passo.
+    assert parse_flow_change("quero aumentar meu limite", Intent.LIMIT_INCREASE) is None
+    assert parse_flow_change("4000", Intent.LIMIT_INCREASE) is None
+
+
+def test_parse_flow_change_reads_refusal_without_new_request() -> None:
+    change = parse_flow_change("não quero mais", Intent.LIMIT_INCREASE)
+
+    assert change is not None
+    assert change.declines_current
+    assert change.requested_intent is Intent.UNKNOWN
+
+
+def test_infer_flow_change_sends_masked_text_with_redirect_prompt() -> None:
+    llm = RecordingLlm({"declines_current": False, "requested_intent": "exchange_rate"})
+
+    change = infer_flow_change(
+        "meu CPF é 012.345.678-90, esquece os 5000 e me diz do exterior",
+        Intent.LIMIT_INCREASE,
+        llm,
+        "turn",
+        (),
+    )
+
+    assert change is not None
+    assert change.requested_intent is Intent.EXCHANGE_RATE
+    turn_id, messages, version = llm.calls[0]
+    assert turn_id == "turn"
+    assert version == "global@1.5.0+redirect@1.0.0"
+    prompt = str(messages[0].content)
+    assert "aumento de limite" in prompt
+    sent = str(messages[-1].content)
+    assert "012" not in sent
+    assert "5000" not in sent
+    assert "exterior" in sent
+
+
+@pytest.mark.parametrize(
+    ("response", "expected_declines", "expected_intent"),
+    (
+        # Encerrar continua exigindo pedido explicito: aqui vira recusa.
+        ({"declines_current": False, "requested_intent": "end_service"}, True, None),
+        ({"declines_current": True, "requested_intent": "unknown"}, True, None),
+        ({"declines_current": False, "requested_intent": "help"}, False, Intent.HELP),
+        # Repetir o proprio fluxo nao e mudanca.
+        ({"declines_current": False, "requested_intent": "limit_increase"}, None, None),
+        ({"declines_current": False, "requested_intent": "information"}, None, None),
+        ({"declines_current": False, "requested_intent": "INVALID"}, None, None),
+    ),
+)
+def test_infer_flow_change_normalizes_model_output(
+    response: dict[str, object],
+    expected_declines: bool | None,
+    expected_intent: Intent | None,
+) -> None:
+    class ValidatingLlm(RecordingLlm):
+        def invoke_structured(
+            self,
+            turn_id: str,
+            messages: list[BaseMessage],
+            output_schema: type[OutputModel],
+            *,
+            prompt_version: str | None = None,
+        ) -> OutputModel:
+            from pydantic import ValidationError
+
+            from banco_agil.domain.exceptions import IntegrationError
+
+            try:
+                return super().invoke_structured(
+                    turn_id, messages, output_schema, prompt_version=prompt_version
+                )
+            except ValidationError as error:
+                raise IntegrationError("invalid") from error
+
+    change = infer_flow_change(
+        "hmm", Intent.LIMIT_INCREASE, ValidatingLlm(response), "turn", ()
+    )
+
+    if expected_declines is None:
+        assert change is None
+        return
+    assert change is not None
+    assert change.declines_current is expected_declines
+    if expected_intent is not None:
+        assert change.requested_intent is expected_intent
+
+
+def test_infer_flow_change_keeps_one_call_for_the_final_wording() -> None:
+    llm = RecordingLlm({"declines_current": True, "requested_intent": "unknown"})
+    llm.calls.append(("turn", [], None))
+
+    assert infer_flow_change("tanto faz", Intent.EXCHANGE_RATE, llm, "turn", ()) is None
+    assert len(llm.calls) == 1
+
+
+def test_credit_awaiting_amount_redirects_to_exchange(client: Client) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT,
+        intent=Intent.LIMIT_INCREASE,
+    )
+    service = FakeCreditService(
+        LimitIncreaseResult(
+            current_limit=Decimal("2500.00"),
+            requested_limit=Decimal("4000.00"),
+            status=CreditRequestStatus.APPROVED,
+        )
+    )
+    llm = RecordingLlm({"declines_current": False, "requested_intent": "unknown"})
+
+    reply = handle_credit(
+        state,
+        "não quero mais aumento, quero a cotação do dólar",
+        service,
+        llm=llm,
+        turn_id="turn",
+    )
+
+    assert reply == HANDOFF_REPLY
+    assert state.intent is Intent.EXCHANGE_RATE
+    assert state.active_agent is Agent.EXCHANGE
+    assert service.requested_limits == []
+    # O parser resolveu; o LLM nao foi necessario.
+    assert llm.calls == []
+
+
+def test_credit_awaiting_amount_accepts_refusal(client: Client) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT,
+        intent=Intent.LIMIT_INCREASE,
+    )
+    service = FakeCreditService(
+        LimitIncreaseResult(
+            current_limit=Decimal("2500.00"),
+            requested_limit=Decimal("4000.00"),
+            status=CreditRequestStatus.APPROVED,
+        )
+    )
+
+    reply = handle_credit(state, "deixa pra lá", service)
+
+    assert reply == REFUSAL_REPLY
+    assert state.intent is Intent.UNKNOWN
+    assert state.active_agent is Agent.TRIAGE
+    assert service.requested_limits == []
+
+
+def test_credit_uses_llm_to_read_a_vague_refusal(client: Client) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT,
+        intent=Intent.LIMIT_INCREASE,
+    )
+    service = FakeCreditService(
+        LimitIncreaseResult(
+            current_limit=Decimal("2500.00"),
+            requested_limit=Decimal("4000.00"),
+            status=CreditRequestStatus.APPROVED,
+        )
+    )
+    llm = RecordingLlm({"declines_current": True, "requested_intent": "unknown"})
+
+    reply = handle_credit(
+        state, "vou pensar melhor sobre isso", service, llm=llm, turn_id="turn"
+    )
+
+    assert reply == REFUSAL_REPLY
+    assert state.active_agent is Agent.TRIAGE
+    assert len(llm.calls) == 1
+
+
+def test_credit_never_asks_the_llm_about_a_valid_amount(client: Client) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT,
+        intent=Intent.LIMIT_INCREASE,
+    )
+    service = FakeCreditService(
+        LimitIncreaseResult(
+            current_limit=Decimal("2500.00"),
+            requested_limit=Decimal("4000.00"),
+            status=CreditRequestStatus.APPROVED,
+        )
+    )
+    llm = RecordingLlm({"declines_current": True, "requested_intent": "unknown"})
+
+    handle_credit(state, "4000", service, llm=llm, turn_id="turn")
+
+    assert service.requested_limits == [Decimal("4000")]
+    assert llm.calls == []
+
+
+def test_credit_without_llm_still_asks_for_the_amount(client: Client) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT,
+        intent=Intent.LIMIT_INCREASE,
+    )
+    service = FakeCreditService(
+        LimitIncreaseResult(
+            current_limit=Decimal("2500.00"),
+            requested_limit=Decimal("4000.00"),
+            status=CreditRequestStatus.APPROVED,
+        )
+    )
+
+    reply = handle_credit(state, "vou pensar melhor sobre isso", service)
+
+    assert "limite total" in reply.casefold()
+    assert state.active_agent is Agent.CREDIT
+
+
+def test_exchange_redirects_to_credit_instead_of_asking_currency(
+    client: Client,
+) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.EXCHANGE,
+        intent=Intent.EXCHANGE_RATE,
+    )
+    service = FakeExchangeService(None)
+
+    reply = handle_exchange(state, "na verdade prefiro ver meu limite", service)
+
+    assert reply == HANDOFF_REPLY
+    assert state.intent is Intent.CREDIT_LIMIT
+    assert state.active_agent is Agent.CREDIT
+    assert service.calls == []
+
+
+def test_exchange_does_not_send_a_refusal_to_the_provider(client: Client) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.EXCHANGE,
+        intent=Intent.EXCHANGE_RATE,
+    )
+    service = FakeExchangeService(None)
+
+    reply = handle_exchange(state, "nao quero mais", service)
+
+    # Antes, "nao" era lido como codigo de moeda NAO e ia para a API.
+    assert reply == REFUSAL_REPLY
+    assert service.calls == []
+    assert state.active_agent is Agent.TRIAGE
+
+
+def test_exchange_still_accepts_uppercase_code(client: Client) -> None:
+    quote = ExchangeQuote(
+        base_currency="JPY",
+        quote_currency="BRL",
+        rate=Decimal("0.03"),
+        source="AwesomeAPI",
+        quoted_at=datetime(2026, 9, 3, 12, 0, tzinfo=UTC),
+    )
+    service = FakeExchangeService(ExchangeRateResult(quote=quote))
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.EXCHANGE,
+        intent=Intent.EXCHANGE_RATE,
+    )
+
+    handle_exchange(state, "JPY", service)
+
+    assert service.calls == [("JPY", "BRL")]
+
+
+def test_interview_consent_redirects_to_another_service(client: Client) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT_INTERVIEW,
+        intent=Intent.LIMIT_INCREASE,
+        requested_limit=Decimal("4000.00"),
+    )
+    service = FakeInterviewService(
+        InterviewProgress(next_field=InterviewField.MONTHLY_INCOME)
+    )
+
+    reply = handle_credit_interview(
+        state, "na verdade quero a cotação do euro", service
+    )
+
+    assert reply == HANDOFF_REPLY
+    assert state.active_agent is Agent.EXCHANGE
+    assert state.requested_limit is None
+    assert service.starts == []
+
+
+def test_interview_consent_uses_llm_for_a_vague_refusal(client: Client) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT_INTERVIEW,
+        requested_limit=Decimal("4000.00"),
+    )
+    service = FakeInterviewService(
+        InterviewProgress(next_field=InterviewField.MONTHLY_INCOME)
+    )
+    llm = RecordingLlm({"declines_current": True, "requested_intent": "unknown"})
+
+    reply = handle_credit_interview(
+        state, "acho que vou deixar isso quieto", service, llm=llm, turn_id="turn"
+    )
+
+    # A recusa antes do consentimento continua passando pelo servico.
+    assert service.starts == [False]
+    assert "tudo bem" in reply.casefold()
+    assert state.active_agent is Agent.TRIAGE
+    assert len(llm.calls) == 1
+
+
+def test_interview_consent_does_not_ask_llm_about_a_clear_yes(client: Client) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT_INTERVIEW,
+        requested_limit=Decimal("4000.00"),
+    )
+    service = FakeInterviewService(
+        InterviewProgress(next_field=InterviewField.MONTHLY_INCOME)
+    )
+    llm = RecordingLlm({"declines_current": True, "requested_intent": "unknown"})
+
+    handle_credit_interview(state, "sim", service, llm=llm, turn_id="turn")
+
+    assert service.starts == [True]
+    assert llm.calls == []
+
+
+class _InvalidAnswerInterviewService(FakeInterviewService):
+    def collect_answer(
+        self,
+        state: ConversationState,
+        answer: str,
+    ) -> InterviewProgress:
+        del state, answer
+        raise DomainError("invalid interview answer")
+
+
+def test_interview_midway_redirects_to_the_requested_service(client: Client) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT_INTERVIEW,
+        requested_limit=Decimal("4000.00"),
+        interview_draft=CreditInterviewDraft(
+            consent_given=True, monthly_income=Decimal("5000.00")
+        ),
+    )
+    service = _InvalidAnswerInterviewService(
+        InterviewProgress(next_field=InterviewField.EMPLOYMENT_TYPE)
+    )
+
+    reply = handle_credit_interview(state, "quero só ver meu limite", service)
+
+    assert reply == HANDOFF_REPLY
+    assert state.active_agent is Agent.CREDIT
+    assert state.intent is Intent.CREDIT_LIMIT
+    # Trocar de assunto no meio da coleta tambem retira o consentimento.
+    assert state.interview_draft.consent_given is False
+    assert state.requested_limit is None
+
+
+def test_interview_midway_uses_llm_for_a_vague_desistance(client: Client) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT_INTERVIEW,
+        interview_draft=CreditInterviewDraft(
+            consent_given=True, monthly_income=Decimal("5000.00")
+        ),
+    )
+    service = _InvalidAnswerInterviewService(
+        InterviewProgress(next_field=InterviewField.EMPLOYMENT_TYPE)
+    )
+    llm = RecordingLlm({"declines_current": True, "requested_intent": "unknown"})
+
+    reply = handle_credit_interview(
+        state, "hmm, isso está ficando longo demais", service, llm=llm, turn_id="t"
+    )
+
+    assert "não guardei nada" in reply
+    assert state.interview_draft.consent_given is False
+    assert len(llm.calls) == 1
+
+
+def test_interview_midway_keeps_misplaced_yes_no_as_format_error(
+    client: Client,
+) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT_INTERVIEW,
+        interview_draft=CreditInterviewDraft(consent_given=True),
+    )
+    service = _InvalidAnswerInterviewService(
+        InterviewProgress(next_field=InterviewField.MONTHLY_INCOME)
+    )
+    llm = RecordingLlm({"declines_current": True, "requested_intent": "unknown"})
+
+    reply = handle_credit_interview(state, "não", service, llm=llm, turn_id="t")
+
+    assert "formato" in reply.casefold()
+    assert state.interview_draft.consent_given is True
+    assert llm.calls == []
+
+
+def test_interview_midway_without_llm_repeats_the_question(client: Client) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT_INTERVIEW,
+        interview_draft=CreditInterviewDraft(consent_given=True),
+    )
+    service = _InvalidAnswerInterviewService(
+        InterviewProgress(next_field=InterviewField.MONTHLY_INCOME)
+    )
+
+    reply = handle_credit_interview(state, "hmm, isso está ficando longo", service)
+
+    assert "renda mensal" in reply.casefold()
+    assert state.interview_draft.consent_given is True
+
+
+def test_triage_pending_offer_uses_llm_to_read_refusal(client: Client) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        pending_flow=Intent.CREDIT_INTERVIEW,
+    )
+    llm = RecordingLlm({"declines_current": True, "requested_intent": "unknown"})
+
+    reply = handle_triage(
+        state,
+        "hmm, deixa eu ver com minha esposa antes",
+        FakeAuthenticationService(client),
+        llm=llm,
+        turn_id="turn",
+    )
+
+    assert "tudo bem" in reply.casefold()
+    assert state.pending_flow is None
+    assert state.active_agent is Agent.TRIAGE
+    assert len(llm.calls) == 1
+
+
+def test_triage_pending_offer_uses_llm_to_read_a_different_request(
+    client: Client,
+) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        pending_flow=Intent.CREDIT_INTERVIEW,
+    )
+    llm = RecordingLlm({"declines_current": False, "requested_intent": "exchange_rate"})
+
+    reply = handle_triage(
+        state,
+        "prefiro resolver aquela coisa do exterior primeiro",
+        FakeAuthenticationService(client),
+        llm=llm,
+        turn_id="turn",
+    )
+
+    assert reply == HANDOFF_REPLY
+    assert state.pending_flow is None
+    assert state.intent is Intent.EXCHANGE_RATE
+    assert state.active_agent is Agent.EXCHANGE
+
+
+def test_triage_pending_offer_without_llm_repeats_the_question(client: Client) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        pending_flow=Intent.CREDIT_INTERVIEW,
+    )
+
+    reply = handle_triage(
+        state,
+        "hmm, deixa eu ver com minha esposa antes",
+        FakeAuthenticationService(client),
+    )
+
+    assert "não consegui confirmar" in reply.casefold()
+    assert state.pending_flow is Intent.CREDIT_INTERVIEW
+
+
+def test_triage_llm_receives_masked_text_instead_of_allowed_terms(
+    client: Client,
+) -> None:
+    state = ConversationState(authenticated_client=client)
+    llm = RecordingLlm({"intent": "exchange_rate"})
+
+    handle_triage(
+        state,
+        "não quero nada disso, meu CPF 01234567890 e 20/05/1990 ficam de fora",
+        FakeAuthenticationService(client),
+        llm=llm,
+        turn_id="turn",
+    )
+
+    sent = str(llm.calls[0][1][-1].content)
+    assert "não quero nada disso" in sent
+    assert "01234567890" not in sent
+    assert "20/05/1990" not in sent

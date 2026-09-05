@@ -662,3 +662,112 @@ def test_information_question_does_not_start_an_operation(client: Client) -> Non
     # Antes desta rota, a mesma frase abria um pedido de aumento.
     assert "limite total" not in turn.reply.casefold()
     assert "cobrança" in turn.reply.casefold()
+
+
+def test_refusal_with_new_request_is_served_by_the_other_specialist(
+    client: Client,
+) -> None:
+    llm = RecordingLlm({"reply": "O dólar está em [DADO_1] agora. Mais algo?"})
+    harness = build_harness(client, llm)
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT,
+        intent=Intent.LIMIT_INCREASE,
+    )
+    history: tuple[BaseMessage, ...] = (
+        HumanMessage(content="quero aumentar meu limite"),
+        AIMessage(content="Qual é o limite total que gostaria de ter?"),
+    )
+
+    turn = harness.service.handle_turn(
+        state, history, "não quero mais o aumento, me diz a cotação do dólar"
+    )
+
+    assert harness.exchange.calls == [("USD", "BRL")]
+    assert harness.requests.requests == []
+    assert "5,25" in turn.reply
+    assert state.active_agent is Agent.TRIAGE
+    # Parser resolveu a troca; a unica chamada foi a redacao do cambio.
+    assert len(llm.calls) == 1
+
+
+def test_llm_read_refusal_is_followed_by_the_final_wording(client: Client) -> None:
+    @dataclass
+    class SequenceLlm(RecordingLlm):
+        responses: list[object] = field(default_factory=list)
+
+        def invoke_structured(
+            self,
+            turn_id: str,
+            messages: list[BaseMessage],
+            output_schema: type[OutputModel],
+            *,
+            prompt_version: str | None = None,
+        ) -> OutputModel:
+            self.response = self.responses.pop(0)
+            return super().invoke_structured(
+                turn_id, messages, output_schema, prompt_version=prompt_version
+            )
+
+    llm = SequenceLlm(
+        response=None,
+        responses=[
+            {"declines_current": False, "requested_intent": "credit_limit"},
+            {"reply": "Claro. Seu limite hoje é [DADO_1]. Quer seguir ou encerrar?"},
+        ],
+    )
+    harness = build_harness(client, llm)
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.EXCHANGE,
+        intent=Intent.EXCHANGE_RATE,
+    )
+
+    turn = harness.service.handle_turn(
+        state, (), "esquece a moeda, só me diz quanto eu tenho disponível"
+    )
+
+    assert harness.exchange.calls == []
+    assert "limite" in turn.reply.casefold()
+    assert len(llm.calls) == 2
+    # Primeira chamada classifica a recusa; a segunda redige o canonico.
+    assert "classificar o turno" in str(llm.calls[0][0].content)
+    assert "Texto validado" in str(llm.calls[1][-1].content)
+    assert state.active_agent is Agent.TRIAGE
+
+
+def test_specialist_reached_from_triage_does_not_classify_again(
+    client: Client,
+) -> None:
+    llm = RecordingLlm({"declines_current": True, "requested_intent": "unknown"})
+    harness = build_harness(client, llm)
+    state = ConversationState(authenticated_client=client)
+
+    turn = harness.service.handle_turn(state, (), "quero aumentar meu limite")
+
+    # Triagem classificou; o credito nao pode reinterpretar o mesmo texto.
+    assert state.intent is Intent.LIMIT_INCREASE
+    assert "limite total" in turn.reply.casefold()
+    assert all("redirect" not in str(call[0].content) for call in llm.calls)
+
+
+def test_interview_abandoned_for_another_service_keeps_nothing(
+    client: Client,
+) -> None:
+    harness = build_harness(client)
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT_INTERVIEW,
+        requested_limit=Decimal("4000.00"),
+        interview_draft=CreditInterviewDraft(
+            consent_given=True, monthly_income=Decimal("5000.00")
+        ),
+    )
+
+    turn = harness.service.handle_turn(state, (), "chega, quero ver o dólar")
+
+    assert harness.exchange.calls == [("USD", "BRL")]
+    assert harness.clients.updated_scores == []
+    assert state.interview_draft.consent_given is False
+    assert state.requested_limit is None
+    assert "5,25" in turn.reply

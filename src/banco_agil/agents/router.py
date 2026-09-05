@@ -4,6 +4,7 @@ from typing import Literal, TypedDict
 
 from langchain_core.messages import BaseMessage
 
+from banco_agil.agents._shared import HANDOFF_REPLY
 from banco_agil.agents.state import ConversationState
 from banco_agil.domain.enums import Agent
 
@@ -71,6 +72,21 @@ def route_after_triage(state: GraphState) -> NodeRoute:
     return "humanize"
 
 
+def route_after_specialist(state: GraphState) -> NodeRoute:
+    """Entrega o turno a outro especialista quando o cliente mudou de pedido.
+
+    O especialista sinaliza a entrega com a resposta canonica de transicao; o
+    destino responde no mesmo turno, e o cliente nunca ve a troca.
+    """
+    if state["conversation"].ended:
+        return "finalize"
+    if state["reply"] != HANDOFF_REPLY:
+        return "humanize"
+    if state["step_count"] >= MAX_HANDLER_STEPS:
+        return "limit_guard"
+    return _route_for_agent(state["conversation"].active_agent)
+
+
 def route_after_interview(state: GraphState) -> NodeRoute:
     """Encaminha entrevista concluida para reanalise imediata de credito."""
     if state["conversation"].ended:
@@ -82,7 +98,7 @@ def route_after_interview(state: GraphState) -> NodeRoute:
         if state["step_count"] >= MAX_HANDLER_STEPS:
             return "limit_guard"
         return "credit"
-    return "humanize"
+    return route_after_specialist(state)
 
 
 def _route_for_agent(agent: Agent) -> NodeRoute:

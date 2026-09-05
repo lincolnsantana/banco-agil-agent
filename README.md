@@ -41,9 +41,12 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
 - **Nós** (`agents/triage.py`, `credit.py`, `credit_interview.py`,
   `exchange.py`): autenticação e rotas claras são determinísticas (parser
   primeiro; `alterar/mudar/ajustar/modificar limite` é aumento, `score` /
-  `entrevista` é entrevista); só intenção pós-autenticação ambígua usa o Groq
+  `entrevista` é entrevista); intenção pós-autenticação ambígua usa o Groq
   para classificar; Crédito, Entrevista e Câmbio podem ter a resposta final
-  redigida pelo Groq, com fallback canônico.
+  redigida pelo Groq, com fallback canônico. Em qualquer especialista, texto
+  que não é resposta ao passo atual passa por um parser de recusa e de pedido
+  novo e, se preciso, pelo Groq: "não quero mais aumento, quero o dólar" leva
+  o cliente ao câmbio no mesmo turno em vez de repetir "qual limite?".
 - **Prompts** (`prompts/`): um system message = global + especialista ativo +
   estado mínimo sanitizado (sem PII, < 500 caracteres); só as tools do
   especialista ativo são expostas; IDs/versões testados contra `PROMPTS.md`.
@@ -109,8 +112,13 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
   `SkipValidation` nos serviços injetados, mantendo tipos concretos por escopo.
 - **Invariante `ended`/`end_reason`**: atribuições separadas quebravam a
   validação — transição atômica em `ConversationState.end()`.
-- **Texto livre com PII chegando ao LLM**: sanitização por lista positiva de
-  termos + no máximo 5 mensagens anteriores sanitizadas.
+- **Texto livre com PII chegando ao LLM**: máscara de CPF, data, números e
+  caracteres de estrutura + no máximo 5 mensagens anteriores mascaradas. A
+  lista positiva de termos foi abandonada porque descartava a negação, e sem
+  "não" o modelo nunca via uma recusa.
+- **Cliente que desiste no meio de um fluxo**: cada especialista repetia a
+  própria pergunta. Agora o passo é descartado e o pedido novo, quando existe,
+  é entregue ao especialista certo no mesmo turno por uma aresta condicional.
 - **Reanálise pós-entrevista sem duplicar regra**: sinal transitório
   `credit_reanalysis_pending` + `update_credit_score` via tool.
 - **Falsos positivos no encerramento** (`quero sair das dívidas`): encerramento
@@ -133,10 +141,13 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
 
 **Uso do LLM**: o Groq gera as boas-vindas por um prompt isolado, sem estado,
 histórico ou tools. Na triagem, autenticação, encerramento e rotas claras usam
-zero chamada; só texto pós-autenticação ambíguo usa uma chamada de
-classificação, com fallback determinístico. Crédito, Entrevista e Câmbio usam
-uma chamada por turno para redigir o texto canônico com fatos mascarados (até
-duas no turno com rota ambígua), recebendo junto a pergunta do cliente com PII
+zero chamada; texto pós-autenticação ambíguo usa uma chamada de classificação,
+com fallback determinístico. Dentro de um fluxo, texto que não é valor, moeda,
+item da entrevista ou confirmação passa pelo parser de recusa e, se ele não
+resolver, por uma chamada de classificação (`redirect`) que diz se o cliente
+desistiu e o que pediu em vez disso. Crédito, Entrevista e Câmbio usam uma
+chamada por turno para redigir o texto canônico com fatos mascarados (até duas
+no turno com classificação), recebendo junto a pergunta do cliente com PII
 mascarada para responderem no tom de quem perguntou. CPF, data, números,
 sim/não, cálculos, encerramento e autenticação continuam determinísticos. Temperatura `0.3`, saída
 de 500 tokens e timeout de 30 s; saída inválida ou falha preserva integralmente
@@ -180,9 +191,10 @@ decisões. Junto do canônico ele recebe a pergunta do cliente — sem CPF,
 nascimento, números ou caracteres de estrutura — para reconhecer o pedido e
 responder com as palavras de quem perguntou; a pergunta orienta o tom, nunca o
 conteúdo, e a saída só é aceita se preservar marcadores, números, decisão e
-pergunta do canônico. A triagem usa parser determinístico primeiro e só
-classifica via Groq quando a intenção continua ambígua; cada turno especialista
-faz no máximo uma chamada de redação.
+pergunta do canônico. Todo nó usa parser determinístico primeiro e só classifica
+via Groq quando o texto continua ambíguo, seja a intenção na triagem, seja uma
+recusa ou troca de assunto no meio de um fluxo; cada turno faz no máximo uma
+chamada de classificação e uma de redação.
 
 Roteiro na UI: na tela inicial, clique em **Visualizar limite** (ou digite o
 pedido no campo central) → informe o CPF → informe o nascimento →

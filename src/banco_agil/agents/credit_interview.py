@@ -1,17 +1,25 @@
 """No deterministico da entrevista de credito."""
 
-import re
+from collections.abc import Sequence
+
+from langchain_core.messages import BaseMessage
 
 from banco_agil.agents._shared import (
+    FlowChange,
+    apply_flow_change,
     authentication_reply_if_missing,
+    detects_refusal,
     end_reply_if_requested,
+    infer_flow_change,
     normalize_short_answer,
     parse_confirmation,
+    parse_flow_change,
 )
 from banco_agil.agents.state import ConversationState, CreditInterviewDraft
 from banco_agil.domain.enums import Agent, Intent
 from banco_agil.domain.exceptions import DomainError, RepositoryError
 from banco_agil.domain.models import ScoreUpdateResult
+from banco_agil.integrations.llm import StructuredLlm
 from banco_agil.services.credit_interview import (
     CreditInterviewService,
     InterviewField,
@@ -47,8 +55,17 @@ def handle_credit_interview(
     state: ConversationState,
     user_text: str,
     service: CreditInterviewService,
+    *,
+    llm: StructuredLlm | None = None,
+    turn_id: str = "",
+    recent_messages: Sequence[BaseMessage] = (),
 ) -> str:
-    """Coleta consentimento e uma resposta validada por turno."""
+    """Coleta consentimento e uma resposta validada por turno.
+
+    Respostas, score e consentimento continuam deterministicos. O LLM entra
+    apenas quando o texto nao e resposta valida, para distinguir desistencia,
+    pedido de outro servico e resposta apenas mal formatada.
+    """
     end_reply = end_reply_if_requested(state, user_text)
     if end_reply is not None:
         return end_reply
@@ -56,40 +73,28 @@ def handle_credit_interview(
     if authentication_reply is not None:
         return authentication_reply
 
-    if state.interview_draft.consent_given and _cancels_interview(user_text):
-        return _cancel_interview(state)
-
     if not state.interview_draft.consent_given:
-        consent = _explicit_interview_consent(user_text)
-        if consent is None and _cancels_interview(user_text):
-            # Antes do consentimento a recusa passa pelo servico, que e quem
-            # detem o consentimento. Sem isto, com a intencao ja reconhecida
-            # pela triagem, um "cancelar" aqui iniciaria a coleta.
-            consent = False
-        if consent is None and not _looks_like_interview_request(user_text):
-            consent = parse_confirmation(user_text)
-        if consent is None and state.intent is Intent.CREDIT_INTERVIEW:
-            # A triagem ja reconheceu o pedido; nos turnos retomados apos a
-            # autenticacao o texto aqui e a data de nascimento, nao o pedido.
-            consent = True
-        if consent is None:
-            return "Quer realizar a entrevista de crédito agora?"
-        try:
-            progress = service.start(state, consent)
-        except DomainError:
-            state.active_agent = Agent.CREDIT
-            return "Não há solicitação de limite pendente para esta entrevista."
-        if progress.consent_declined:
-            state.requested_limit = None
-            state.intent = Intent.UNKNOWN
-            state.active_agent = Agent.TRIAGE
-            return "Tudo bem. Posso ajudar com outro serviço ou encerrar o atendimento."
-        return _INTERVIEW_OPENING
+        return _handle_consent(state, user_text, service, llm, turn_id, recent_messages)
+
+    # Pedido de outro servico vence o cancelamento generico: "chega, quero ver
+    # o dolar" leva o dolar junto em vez de parar na triagem.
+    change = parse_flow_change(user_text, Intent.CREDIT_INTERVIEW)
+    if change is not None and not change.declines_current:
+        return apply_flow_change(state, change)
+    if _cancels_interview(user_text):
+        return _cancel_interview(state)
 
     current_field = _current_field(state)
     try:
         progress = service.collect_answer(state, user_text)
     except DomainError:
+        change = _flow_change_during_collection(
+            user_text, llm, turn_id, recent_messages
+        )
+        if change is not None and change.declines_current:
+            return _cancel_interview(state)
+        if change is not None:
+            return apply_flow_change(state, change)
         return f"Resposta em formato inválido. {_question(current_field)}"
 
     if progress.completed_interview is not None:
@@ -114,6 +119,74 @@ def handle_credit_interview(
             score_result.previous_score, score_result.new_score
         )
     return _question(progress.next_field)
+
+
+def _handle_consent(
+    state: ConversationState,
+    user_text: str,
+    service: CreditInterviewService,
+    llm: StructuredLlm | None,
+    turn_id: str,
+    recent_messages: Sequence[BaseMessage],
+) -> str:
+    """Le consentimento, recusa ou pedido de outro servico antes de coletar.
+
+    Antes do consentimento a recusa passa pelo servico, que e quem o detem.
+    Sem isto, com a intencao ja reconhecida pela triagem, um "cancelar" aqui
+    iniciaria a coleta. Pedido de outro servico entrega o turno a ele.
+    """
+    consent = _explicit_interview_consent(user_text)
+    if consent is None:
+        change = parse_flow_change(user_text, Intent.CREDIT_INTERVIEW)
+        if change is not None and not change.declines_current:
+            return apply_flow_change(state, change)
+        if change is not None:
+            consent = False
+    if consent is None and not _looks_like_interview_request(user_text):
+        consent = parse_confirmation(user_text)
+    if consent is None and state.intent is Intent.CREDIT_INTERVIEW:
+        # A triagem ja reconheceu o pedido; nos turnos retomados apos a
+        # autenticacao o texto aqui e a data de nascimento, nao o pedido.
+        consent = True
+    if consent is None:
+        change = infer_flow_change(
+            user_text, Intent.CREDIT_INTERVIEW, llm, turn_id, recent_messages
+        )
+        if change is not None and not change.declines_current:
+            return apply_flow_change(state, change)
+        if change is not None:
+            consent = False
+    if consent is None:
+        return "Quer realizar a entrevista de crédito agora?"
+    try:
+        progress = service.start(state, consent)
+    except DomainError:
+        state.active_agent = Agent.CREDIT
+        return "Não há solicitação de limite pendente para esta entrevista."
+    if progress.consent_declined:
+        state.requested_limit = None
+        state.intent = Intent.UNKNOWN
+        state.active_agent = Agent.TRIAGE
+        return "Tudo bem. Posso ajudar com outro serviço ou encerrar o atendimento."
+    return _INTERVIEW_OPENING
+
+
+def _flow_change_during_collection(
+    user_text: str,
+    llm: StructuredLlm | None,
+    turn_id: str,
+    recent_messages: Sequence[BaseMessage],
+) -> FlowChange | None:
+    """Pede ao LLM que leia uma resposta invalida que o parser nao resolveu.
+
+    "sim" e "nao" fora de lugar sao so resposta mal posicionada, nunca recusa:
+    um "nao" solto responde dividas ativas e a regra vale em qualquer campo.
+    """
+    if normalize_short_answer(user_text) in _DEBT_ANSWERS:
+        return None
+    return infer_flow_change(
+        user_text, Intent.CREDIT_INTERVIEW, llm, turn_id, recent_messages
+    )
 
 
 def _score_completion_reply(previous_score: int, new_score: int) -> str:
@@ -177,48 +250,6 @@ def _explicit_interview_consent(user_text: str) -> bool | None:
     return None
 
 
-# Palavras que pedem interrupcao. Nenhuma aparece numa resposta valida da
-# entrevista, que aceita numero, tipo de emprego ou sim/nao.
-_CANCEL_MARKERS = frozenset(
-    {
-        "cancelar",
-        "cancela",
-        "cancele",
-        "cancelo",
-        "cancelamento",
-        "parar",
-        "pare",
-        "chega",
-        "basta",
-        "esquece",
-        "esqueca",
-        "esquecer",
-        "desisto",
-        "desisti",
-        "desistir",
-        "interromper",
-        "interrompe",
-    }
-)
-_CANCEL_PHRASES = (
-    "nao quero mais",
-    "nao quero fazer",
-    "nao quero continuar",
-    "nao quero responder",
-    "nao quero seguir",
-    "nao quero isso",
-    "prefiro nao",
-    "melhor nao",
-    "agora nao",
-    "deixa pra la",
-    "deixa para la",
-    "deixa quieto",
-    "outra hora",
-    "mais tarde",
-    "depois eu faco",
-)
-# "para" sozinho pede parada; dentro de uma frase e preposicao comum.
-_CANCEL_ALONE = frozenset({"para", "para."})
 # Respostas validas de dividas ativas, que nunca podem ser lidas como recusa.
 _DEBT_ANSWERS = frozenset({"sim", "nao"})
 
@@ -228,17 +259,12 @@ def _cancels_interview(user_text: str) -> bool:
 
     Um "nao" isolado responde a pergunta de dividas ativas e jamais cancela.
     Fora isso a deteccao pode ser generosa: os campos so aceitam numero, tipo
-    de emprego ou sim/nao, entao nenhuma palavra daqui colide com resposta
+    de emprego ou sim/nao, entao nenhuma palavra de recusa colide com resposta
     valida.
     """
-    normalized = normalize_short_answer(user_text)
-    if normalized in _DEBT_ANSWERS:
+    if normalize_short_answer(user_text) in _DEBT_ANSWERS:
         return False
-    if normalized in _CANCEL_ALONE:
-        return True
-    if any(phrase in normalized for phrase in _CANCEL_PHRASES):
-        return True
-    return bool(frozenset(re.findall(r"[a-z]+", normalized)) & _CANCEL_MARKERS)
+    return detects_refusal(user_text)
 
 
 def _cancel_interview(state: ConversationState) -> str:

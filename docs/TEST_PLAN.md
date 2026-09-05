@@ -107,6 +107,29 @@ efeito. No passo 4 o `não` é lido como resposta de dívidas e a entrevista
 continua: cancelar aí é falha. No passo 5 o atendimento encerra e as respostas
 parciais são descartadas junto.
 
+## CT12 — Recusa e troca de assunto no meio de um fluxo
+
+1. Autentique-se, envie `quero aumentar meu limite` e, quando pedirem o valor,
+   responda `não quero mais o aumento, me diz a cotação do dólar`.
+2. Envie `quero aumentar meu limite` de novo e responda `deixa pra lá`.
+3. Envie `cotação` e, quando pedirem a moeda, responda `na verdade prefiro ver
+   meu limite`.
+4. Peça um aumento que será rejeitado e, na oferta da entrevista, responda
+   `na verdade quero a cotação do euro`.
+5. Inicie a entrevista, responda a renda e envie `chega, quero ver o dólar`.
+6. Com `BANCO_AGIL_GROQ_API_KEY` configurada, repita o passo 2 respondendo
+   `vou pensar melhor sobre isso` e, na coleta da entrevista, `hmm, isso está
+   ficando longo demais`.
+
+Resultado esperado: no passo 1 a cotação do dólar aparece no mesmo turno, sem
+pedido de aumento registrado. No passo 2 o atendimento deixa o aumento de lado
+e reapresenta os serviços. No passo 3 o limite atual aparece sem nova pergunta
+de moeda. No passo 4 o câmbio responde e o limite solicitado é descartado. No
+passo 5 a cotação aparece e a renda informada não é guardada; `não` sozinho na
+pergunta de dívidas continua sendo resposta, nunca recusa. No passo 6 o Groq lê
+a desistência vaga e o atendimento deixa o passo de lado; sem chave, a pergunta
+do passo atual é apenas repetida.
+
 ## CT04 — Câmbio e indisponibilidade
 
 1. Autentique-se.
