@@ -44,6 +44,10 @@ CHAT_VIEW = "chat"
 
 # Tempo da animacao de saida da tela inicial antes de trocar para o chat.
 _TRANSITION_SECONDS = 0.28
+# Tempo minimo de exibicao dos pontos de digitacao. Os fluxos deterministicos
+# respondem em milissegundos, e sem esse piso a pergunta do cliente e a resposta
+# aparecem no mesmo instante, como se ninguem tivesse digitado nada.
+_TYPING_MIN_SECONDS = 0.7
 _QUICK_ACTION_COLUMNS = 4
 _SUGGESTION_ROWS = 3
 
@@ -272,6 +276,9 @@ body,
     align-items: center;
     gap: 0.32rem;
     min-height: 24px;
+    /* O atraso curto faz os pontos entrarem depois da fala do cliente, e nao
+       junto com ela: a conversa ganha ordem em vez de surgir pronta. */
+    animation: agil-rise 320ms var(--agil-ease) 120ms both;
 }
 
 .typing-indicator__dot {
@@ -587,6 +594,7 @@ body,
     .st-key-back_to_landing,
     .st-key-chat_view,
     .landing-hero,
+    .typing-indicator,
     .typing-indicator__dot {
         animation: none !important;
     }
@@ -813,6 +821,14 @@ def chat_bubble_html(role: str, text: str) -> str:
         f'<div class="{body_class} {body_class}--{bubble_role}">'
         f"{safe_text}</div></div>"
     )
+
+
+def typing_hold_seconds(elapsed_seconds: float) -> float:
+    """Diz quanto falta para os pontos completarem o tempo minimo visivel.
+
+    Turno lento nao ganha espera nenhuma: o piso so cobre a diferenca.
+    """
+    return max(0.0, _TYPING_MIN_SECONDS - elapsed_seconds)
 
 
 def typing_indicator_html() -> str:
@@ -1061,9 +1077,11 @@ def _process_message(
     render_chat_message("user", mask_sensitive_text(user_text.strip()))
     typing_placeholder = st.empty()
     typing_placeholder.markdown(typing_indicator_html(), unsafe_allow_html=True)
+    started_at = time.perf_counter()
     try:
         submit_user_message(session, service, user_text, stored_welcome(session))
     finally:
+        time.sleep(typing_hold_seconds(time.perf_counter() - started_at))
         typing_placeholder.empty()
 
 

@@ -35,7 +35,9 @@ Cobertura automatizada correspondente em `tests/e2e/test_journeys.py`.
    painel de perguntas rápidas e campo de mensagem ficam escuros e legíveis.
 7. Clique no campo de mensagem e confirme o contorno azul, sem borda vermelha.
 8. Envie uma mensagem e confira os três pontos animados na cor do texto enquanto
-   aguarda, sem círculo de carregamento ou texto `Digitando...`.
+   aguarda, sem círculo de carregamento ou texto `Digitando...`. Eles entram
+   logo depois da fala do cliente e permanecem visíveis por um instante mesmo
+   nas respostas imediatas, como a saudação que pede o CPF.
 9. Ao fim de um serviço, confira o painel acima do campo com o título e três
    perguntas numeradas do especialista que respondeu; o `x` dispensa a oferta e
    o campo continua livre. Durante uma coleta em andamento (CPF, valor do

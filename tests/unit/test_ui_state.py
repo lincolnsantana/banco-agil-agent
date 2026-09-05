@@ -35,6 +35,7 @@ from app import (  # noqa: E402
     submit_user_message,
     suggestions_for,
     take_pending_message,
+    typing_hold_seconds,
     typing_indicator_html,
 )
 from banco_agil.agents.state import ConversationState  # noqa: E402
@@ -349,6 +350,20 @@ def test_chat_lines_carry_no_avatar_emoji() -> None:
     )
 
     assert not re.search(r"[\U0001F300-\U0001FAFF\u2600-\u27BF]", rendered)
+
+
+def test_typing_dots_stay_visible_even_when_the_turn_is_instant() -> None:
+    # Os fluxos deterministicos respondem em milissegundos; sem o piso, a
+    # pergunta e a resposta apareceriam no mesmo instante.
+    assert typing_hold_seconds(0.0) == pytest.approx(app._TYPING_MIN_SECONDS)
+    assert typing_hold_seconds(app._TYPING_MIN_SECONDS / 2) == pytest.approx(
+        app._TYPING_MIN_SECONDS / 2
+    )
+
+
+def test_typing_dots_do_not_delay_a_turn_that_already_took_long() -> None:
+    assert typing_hold_seconds(app._TYPING_MIN_SECONDS) == 0.0
+    assert typing_hold_seconds(12.0) == 0.0
 
 
 def test_typing_indicator_shows_three_animated_dots() -> None:
