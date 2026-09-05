@@ -9,12 +9,15 @@ sem dependencia nova e com resultado auditavel.
 import re
 import unicodedata
 from collections.abc import Sequence
+from decimal import Decimal
 
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 
+from banco_agil.domain.exceptions import RepositoryError
 from banco_agil.knowledge.catalog import KNOWLEDGE_CATALOG, KnowledgeEntry
+from banco_agil.repositories.protocols import ScoreLimitRepository
 
 MIN_TERM_MATCHES = 1
 
@@ -63,9 +66,29 @@ class KnowledgeService:
     def __init__(
         self,
         catalog: Sequence[KnowledgeEntry] = KNOWLEDGE_CATALOG,
+        score_limits: ScoreLimitRepository | None = None,
     ) -> None:
-        """Guarda o catalogo consultado, permitindo substituicao em teste."""
+        """Guarda o catalogo e, opcionalmente, as faixas de score para fatos."""
         self._catalog = tuple(catalog)
+        self._score_limits = score_limits
+
+    def entry_for(self, key: str) -> KnowledgeEntry | None:
+        """Devolve a entrada de chave exata; None se o catalogo nao a tiver."""
+        return next((entry for entry in self._catalog if entry.key == key), None)
+
+    def max_limit_for(self, score: int) -> Decimal | None:
+        """Teto de limite da faixa do score, ou None sem faixas ou em falha.
+
+        E o unico fato que o Conhecimento apresenta alem do que ja esta no
+        estado: ele explica a regra com o numero da propria faixa do cliente,
+        sem decidir nada.
+        """
+        if self._score_limits is None:
+            return None
+        try:
+            return self._score_limits.find_max_limit(score)
+        except (RepositoryError, ValueError):
+            return None
 
     def find(self, user_text: str) -> KnowledgeEntry | None:
         """Devolve a melhor explicacao ou None quando nada alcanca o limiar.

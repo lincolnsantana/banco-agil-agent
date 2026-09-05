@@ -24,6 +24,7 @@ from banco_agil.services.conversation import ConversationService, ConversationTu
 from banco_agil.services.credit import CreditService
 from banco_agil.services.credit_interview import CreditInterviewService
 from banco_agil.services.exchange import ExchangeService
+from banco_agil.services.knowledge import KnowledgeService
 from banco_agil.services.welcome import (
     DEFAULT_WELCOME_MESSAGE,
     generate_welcome_message,
@@ -589,6 +590,9 @@ def _build_conversation_service(
         ),
         credit_interview=CreditInterviewService(client_repository),
         exchange=ExchangeService(AwesomeApiClient(settings.awesomeapi_base_url)),
+        knowledge=KnowledgeService(
+            score_limits=ScoreLimitCsvRepository(settings.data_dir / "score_limite.csv")
+        ),
         llm=llm,
     )
     return ConversationService(build_graph(dependencies))

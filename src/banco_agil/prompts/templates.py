@@ -129,17 +129,17 @@ com cordialidade e reapresente o que você resolve, sem fingir que entendeu.
 
 Estado: {{ state }}"""
 
-REDIRECT_PROMPT = """Tarefa: classificar o turno, sem responder ao cliente.
+UNDERSTANDING_PROMPT = """Tarefa: entender o turno do cliente, sem responder a ele.
 
-O cliente está no meio de: {{ flow }}. A última mensagem do assistente pediu a
-próxima informação desse passo. Decida se ele recusa, desiste ou adia esse passo
-(declines_current) e qual serviço pede em vez disso (requested_intent):
-credit_limit para consultar limite, limit_increase para aumentar limite,
-credit_interview para entrevista ou score, exchange_rate para cotação de moedas,
-help para conhecer os serviços, end_service para encerrar, unknown quando não
-pede nada novo.
-
-Resposta ao passo atual, mesmo torta, não é recusa nem pedido novo: valor,
-moeda, tipo de emprego e sim ou não devolvem unknown sem recusa. Dúvida sobre o
-passo atual também é unknown. Só marque recusa quando o cliente disser que não
-quer, não vai ou prefere parar. Nunca deduza serviço que ele não citou."""
+Passo atual: {{ flow }}. Extraia só o que ele disse; nunca deduza nem complete.
+intent: credit_limit, limit_increase, credit_interview, exchange_rate,
+information, help, end_service ou unknown. declines_current: verdadeiro só se
+ele recusar, desistir ou adiar o passo atual; resposta ao passo não é recusa.
+amount: limite total desejado, só dígitos ("8 mil" é 8000). base_currency e
+quote_currency: códigos ISO; "dólar" é USD e BRL, "euro em dólar" é EUR e USD.
+Entrevista, se ele informar: monthly_income e monthly_expenses só dígitos,
+employment_type formal, autônomo ou desempregado, dependents inteiro,
+has_active_debts. knowledge_topic: um destes, se ele pergunta sobre o assunto
+em vez de pedir ação: {{ topics }}.
+clarification: se o pedido ficou vago, uma pergunta curta e cordial, sem
+número e sem travessão, que o ajude a dizer o que quer; senão vazio."""

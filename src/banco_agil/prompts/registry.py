@@ -13,8 +13,8 @@ from banco_agil.prompts.templates import (
     EXCHANGE_PROMPT,
     GLOBAL_PROMPT,
     KNOWLEDGE_PROMPT,
-    REDIRECT_PROMPT,
     TRIAGE_PROMPT,
+    UNDERSTANDING_PROMPT,
     WELCOME_PROMPT,
 )
 from banco_agil.tools.banking import (
@@ -34,7 +34,7 @@ _CREDIT_PROMPT_VERSION = "1.4.0"
 _CREDIT_INTERVIEW_PROMPT_VERSION = "1.5.0"
 _EXCHANGE_PROMPT_VERSION = "1.5.0"
 _KNOWLEDGE_PROMPT_VERSION = "1.0.0"
-_REDIRECT_PROMPT_VERSION = "1.0.0"
+_UNDERSTANDING_PROMPT_VERSION = "1.0.0"
 
 
 @dataclass(frozen=True)
@@ -101,13 +101,14 @@ WELCOME_PROMPT_DEFINITION = PromptDefinition(
     character_limit=800,
 )
 
-# Classifica recusa e troca de assunto no meio de um fluxo; nao pertence a um
-# especialista, porque qualquer um deles pode precisar dela.
-REDIRECT_PROMPT_DEFINITION = PromptDefinition(
-    prompt_id="redirect",
-    version=_REDIRECT_PROMPT_VERSION,
-    template=REDIRECT_PROMPT,
-    variables=frozenset({"flow"}),
+# Entende o turno no meio de um fluxo: recusa, pedido novo, valor, moeda,
+# respostas da entrevista, topico de duvida e pergunta de esclarecimento. Nao
+# pertence a um especialista, porque qualquer um deles pode precisar dele.
+UNDERSTANDING_PROMPT_DEFINITION = PromptDefinition(
+    prompt_id="understanding",
+    version=_UNDERSTANDING_PROMPT_VERSION,
+    template=UNDERSTANDING_PROMPT,
+    variables=frozenset({"flow", "topics"}),
     character_limit=1_000,
 )
 

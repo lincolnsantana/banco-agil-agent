@@ -712,7 +712,7 @@ def test_llm_read_refusal_is_followed_by_the_final_wording(client: Client) -> No
     llm = SequenceLlm(
         response=None,
         responses=[
-            {"declines_current": False, "requested_intent": "credit_limit"},
+            {"declines_current": False, "intent": "credit_limit"},
             {"reply": "Claro. Seu limite hoje é [DADO_1]. Quer seguir ou encerrar?"},
         ],
     )
@@ -731,7 +731,7 @@ def test_llm_read_refusal_is_followed_by_the_final_wording(client: Client) -> No
     assert "limite" in turn.reply.casefold()
     assert len(llm.calls) == 2
     # Primeira chamada classifica a recusa; a segunda redige o canonico.
-    assert "classificar o turno" in str(llm.calls[0][0].content)
+    assert "entender o turno" in str(llm.calls[0][0].content)
     assert "Texto validado" in str(llm.calls[1][-1].content)
     assert state.active_agent is Agent.TRIAGE
 
@@ -739,7 +739,7 @@ def test_llm_read_refusal_is_followed_by_the_final_wording(client: Client) -> No
 def test_specialist_reached_from_triage_does_not_classify_again(
     client: Client,
 ) -> None:
-    llm = RecordingLlm({"declines_current": True, "requested_intent": "unknown"})
+    llm = RecordingLlm({"declines_current": True, "intent": "unknown"})
     harness = build_harness(client, llm)
     state = ConversationState(authenticated_client=client)
 
@@ -771,3 +771,79 @@ def test_interview_abandoned_for_another_service_keeps_nothing(
     assert state.interview_draft.consent_given is False
     assert state.requested_limit is None
     assert "5,25" in turn.reply
+
+
+def test_triage_understanding_is_reused_by_credit_in_the_same_turn(
+    client: Client,
+) -> None:
+    @dataclass
+    class SequenceLlm(RecordingLlm):
+        responses: list[object] = field(default_factory=list)
+
+        def invoke_structured(
+            self,
+            turn_id: str,
+            messages: list[BaseMessage],
+            output_schema: type[OutputModel],
+            *,
+            prompt_version: str | None = None,
+        ) -> OutputModel:
+            self.response = self.responses.pop(0)
+            return super().invoke_structured(
+                turn_id, messages, output_schema, prompt_version=prompt_version
+            )
+
+    llm = SequenceLlm(
+        response=None,
+        responses=[
+            {"intent": "limit_increase", "amount": "8000"},
+            {"reply": "Boa: pedido de [DADO_1] aprovado, limite atualizado. Seguimos?"},
+        ],
+    )
+    harness = build_harness(client, llm)
+    harness.scores.maximum_limit = Decimal("9000.00")
+    state = ConversationState(authenticated_client=client)
+
+    turn = harness.service.handle_turn(
+        state, (), "tô achando pouco, queria ficar com uns 8 mil"
+    )
+
+    # Uma leitura para a triagem e o credito, uma redacao: nunca uma terceira.
+    assert len(llm.calls) == 2
+    assert harness.requests.requests[0].requested_limit == Decimal("8000.00")
+    assert harness.requests.requests[0].status is CreditRequestStatus.APPROVED
+    assert "8.000,00" in turn.reply
+
+
+def test_understood_question_reaches_knowledge_with_grounded_facts(
+    client: Client,
+) -> None:
+    llm = RecordingLlm({"intent": "information", "knowledge_topic": "why_rejected"})
+    harness = build_harness(client, llm)
+    state = ConversationState(authenticated_client=client)
+
+    turn = harness.service.handle_turn(
+        state, (), "não entendi o motivo daquela resposta negativa"
+    )
+
+    # A mesma leitura serve a triagem e o conhecimento; a redacao falhou de
+    # proposito (schema de intencao) e o canonico com fatos foi preservado.
+    assert "teto da sua faixa" in turn.reply
+    assert "Hoje seu score é 700" in turn.reply
+    assert state.pending_flow is Intent.CREDIT_INTERVIEW
+    understanding_calls = [
+        call for call in llm.calls if "entender o turno" in str(call[0].content)
+    ]
+    assert len(understanding_calls) == 1
+
+
+def test_clear_routed_text_never_triggers_understanding(client: Client) -> None:
+    llm = RecordingLlm({"intent": "exchange_rate", "clarification": "Qual moeda?"})
+    harness = build_harness(client, llm)
+    state = ConversationState(authenticated_client=client)
+
+    turn = harness.service.handle_turn(state, (), "quero aumentar meu limite")
+
+    assert state.intent is Intent.LIMIT_INCREASE
+    assert "limite total" in turn.reply.casefold()
+    assert all("entender o turno" not in str(call[0].content) for call in llm.calls)

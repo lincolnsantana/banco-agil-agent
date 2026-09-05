@@ -11,13 +11,13 @@ from banco_agil.agents._shared import (
     HELP_REPLY,
     apply_flow_change,
     authentication_reply_if_missing,
-    detect_flow_change,
     end_reply_if_requested,
     format_money,
     is_help_request,
     normalized_text,
 )
 from banco_agil.agents.state import ConversationState
+from banco_agil.agents.understanding import TurnContext, resolve_context
 from banco_agil.domain.enums import Agent, Intent
 from banco_agil.domain.exceptions import IntegrationError
 from banco_agil.domain.models import ExchangeRateResult
@@ -96,15 +96,18 @@ def handle_exchange(
     user_text: str,
     service: ExchangeService,
     *,
+    context: TurnContext | None = None,
     llm: StructuredLlm | None = None,
     turn_id: str = "",
     recent_messages: Sequence[BaseMessage] = (),
 ) -> str:
     """Consulta um par completo sem estimar valores em caso de falha.
 
-    Sem moeda reconhecida, verifica primeiro se o cliente desistiu ou pediu
-    outro servico antes de repetir a pergunta.
+    Sem moeda reconhecida pelo parser, o LLM pode ler desistencia, pedido de
+    outro servico ou o par dito de outro jeito; a cotacao continua vindo so da
+    tool.
     """
+    context = resolve_context(context, llm, turn_id, recent_messages)
     end_reply = end_reply_if_requested(state, user_text)
     if end_reply is not None:
         return end_reply
@@ -121,12 +124,14 @@ def handle_exchange(
 
     pair = _parse_currency_pair(user_text)
     if pair is None:
-        change = detect_flow_change(
-            user_text, Intent.EXCHANGE_RATE, llm, turn_id, recent_messages
-        )
+        change = context.flow_change(user_text, Intent.EXCHANGE_RATE)
         if change is not None:
             return apply_flow_change(state, change)
-        return (
+        understanding = context.understand(user_text, Intent.EXCHANGE_RATE)
+        if understanding is not None:
+            pair = understanding.currency_pair
+    if pair is None:
+        return context.clarification(user_text, Intent.EXCHANGE_RATE) or (
             "Qual moeda você quer consultar? Pode dizer apenas o nome, como "
             "dólar ou euro, ou informar um par, como EUR-USD."
         )
@@ -201,7 +206,7 @@ def _parse_currency_pair(user_text: str) -> tuple[str, str] | None:
     names = "|".join(
         re.escape(alias) for alias in sorted(_CURRENCY_NAMES, key=len, reverse=True)
     )
-    named_pair = re.search(rf"\b({names})\s+para\s+({names})\b", normalized)
+    named_pair = re.search(rf"\b({names})\s+(?:para|em)\s+({names})\b", normalized)
     if named_pair is not None:
         return (
             _CURRENCY_NAMES[named_pair.group(1)],

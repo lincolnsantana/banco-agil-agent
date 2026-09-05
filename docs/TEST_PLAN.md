@@ -130,6 +130,28 @@ pergunta de dívidas continua sendo resposta, nunca recusa. No passo 6 o Groq l�
 a desistência vaga e o atendimento deixa o passo de lado; sem chave, a pergunta
 do passo atual é apenas repetida.
 
+## CT13 — Groq entende e auxilia sem decidir (exige chave)
+
+Pré-requisito: `BANCO_AGIL_GROQ_API_KEY` configurada.
+
+1. Autentique-se e envie `tô achando pouco isso, queria ficar com uns 8 mil`.
+2. Envie `cotação` e responda `quanto vale a moeda europeia na americana?`.
+3. Envie `quero atualizar meu score` e responda `ganho 5000 por mês, sou
+   registrado e gasto 2000 fixos`.
+4. Envie `quero aumentar meu limite` e responda `um pouquinho mais`.
+5. Envie `não entendi o motivo daquela resposta negativa`.
+6. Sem chave, repita os passos 1 a 5.
+
+Resultado esperado: no passo 1 a análise acontece para R$ 8.000,00 sem pedir o
+valor de novo. No passo 2 a cotação EUR-USD aparece. No passo 3 renda, emprego
+e despesas são preenchidos de uma vez e a próxima pergunta é sobre
+dependentes. No passo 4 a pergunta de esclarecimento é redigida pelo Groq,
+sem número, terminando em `?`. No passo 5 a explicação da recusa vem com o
+score atual e o teto da faixa do cliente. Em nenhum passo o Groq chamou tool,
+decidiu aprovação ou inventou valor: cada número da resposta existe no CSV ou
+no texto do cliente. Sem chave (passo 6), cada especialista faz a pergunta
+canônica do passo e nada quebra.
+
 ## CT04 — Câmbio e indisponibilidade
 
 1. Autentique-se.

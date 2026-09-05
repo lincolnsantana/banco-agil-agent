@@ -10,12 +10,13 @@ from banco_agil.agents._shared import (
     HELP_REPLY,
     apply_flow_change,
     authentication_reply_if_missing,
-    detect_flow_change,
     end_reply_if_requested,
     format_money,
     is_help_request,
+    normalized_text,
 )
 from banco_agil.agents.state import ConversationState
+from banco_agil.agents.understanding import TurnContext, resolve_context
 from banco_agil.domain.enums import Agent, CreditRequestStatus, Intent
 from banco_agil.domain.exceptions import DomainError, RepositoryError
 from banco_agil.domain.models import CreditLimitResult, LimitIncreaseResult
@@ -29,15 +30,18 @@ def handle_credit(
     user_text: str,
     service: CreditService,
     *,
+    context: TurnContext | None = None,
     llm: StructuredLlm | None = None,
     turn_id: str = "",
     recent_messages: Sequence[BaseMessage] = (),
 ) -> str:
     """Processa consulta, aumento ou reanalise de credito.
 
-    Valores e decisoes continuam deterministicos; o LLM so entra quando o texto
-    nao e um valor, para saber se o cliente desistiu ou pediu outra coisa.
+    Decisoes continuam deterministicas. O LLM entra quando o texto nao e um
+    valor: pode ler desistencia, pedido de outro servico, o valor escrito de
+    outro jeito ("uns oito mil") ou redigir a pergunta de esclarecimento.
     """
+    context = resolve_context(context, llm, turn_id, recent_messages)
     end_reply = end_reply_if_requested(state, user_text)
     if end_reply is not None:
         return end_reply
@@ -64,24 +68,24 @@ def handle_credit(
         )
 
     if state.intent is not Intent.LIMIT_INCREASE:
-        change = detect_flow_change(
-            user_text, state.intent, llm, turn_id, recent_messages
-        )
+        change = context.flow_change(user_text, state.intent)
         if change is not None:
             return apply_flow_change(state, change)
-        return (
+        return context.clarification(user_text, state.intent) or (
             "Posso consultar seu limite atual ou analisar um pedido de aumento. "
             "Qual dessas opções você prefere?"
         )
 
     requested_limit = _parse_money(user_text)
     if requested_limit is None:
-        change = detect_flow_change(
-            user_text, Intent.LIMIT_INCREASE, llm, turn_id, recent_messages
-        )
+        change = context.flow_change(user_text, Intent.LIMIT_INCREASE)
         if change is not None:
             return apply_flow_change(state, change)
-        return (
+        understanding = context.understand(user_text, Intent.LIMIT_INCREASE)
+        if understanding is not None and understanding.amount is not None:
+            requested_limit = understanding.amount
+    if requested_limit is None:
+        return context.clarification(user_text, Intent.LIMIT_INCREASE) or (
             "Claro, posso analisar o aumento com você. Qual é o limite total que "
             "gostaria de ter? Por exemplo: R$ 4.000,00."
         )
@@ -132,7 +136,15 @@ def _request_increase(
     )
 
 
+# "8 mil" e "8k" sao a forma mais comum de dizer um limite em conversa.
+_THOUSANDS_PATTERN = re.compile(r"(\d[\d.,]*)\s*(?:mil|k)\b")
+
+
 def _parse_money(user_text: str) -> Decimal | None:
+    thousands = _THOUSANDS_PATTERN.search(normalized_text(user_text))
+    if thousands is not None:
+        base = _parse_money(thousands.group(1))
+        return None if base is None else base * 1000
     match = re.search(r"\d[\d.,]*", user_text)
     if match is None:
         return None

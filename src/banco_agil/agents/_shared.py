@@ -12,8 +12,8 @@ from banco_agil.agents.state import ConversationState, CreditInterviewDraft
 from banco_agil.domain.enums import Agent, EndReason, Intent
 from banco_agil.domain.exceptions import IntegrationError
 from banco_agil.domain.models import EndServiceResult
-from banco_agil.integrations.llm import MAX_CALLS_PER_TURN, StructuredLlm
-from banco_agil.prompts.renderer import render_prompt, render_redirect_prompt
+from banco_agil.integrations.llm import StructuredLlm
+from banco_agil.prompts.renderer import render_prompt
 from banco_agil.tools.banking import end_service
 
 _END_REQUESTS = {
@@ -472,13 +472,6 @@ RESUMABLE_INTENTS = frozenset(
         Intent.EXCHANGE_RATE,
     }
 )
-_FLOW_LABELS = {
-    Intent.CREDIT_LIMIT: "consulta de limite de crédito",
-    Intent.LIMIT_INCREASE: "pedido de aumento de limite, aguardando o novo limite",
-    Intent.CREDIT_INTERVIEW: "entrevista de crédito, com perguntas sobre renda",
-    Intent.EXCHANGE_RATE: "consulta de cotação, aguardando a moeda",
-}
-
 # Palavras que pedem interrupcao do passo atual. Nenhuma aparece numa resposta
 # valida de valor, moeda, tipo de emprego ou sim/nao.
 _REFUSAL_MARKERS = frozenset(
@@ -524,11 +517,10 @@ _REFUSAL_ALONE = frozenset({"para"})
 
 
 class FlowChange(BaseModel):
-    """Recusa do passo atual e pedido novo, classificados sem escolher agente.
+    """Recusa do passo atual ou pedido novo, sem escolher agente.
 
-    E tambem o schema devolvido pelo Groq: a saida e um enum fechado, entao a
-    pior consequencia de uma classificacao errada e um redirecionamento que o
-    especialista de destino revalida.
+    Vem do parser ou do entendimento do LLM ja aterrado; em ambos os casos o
+    especialista de destino revalida antes de agir.
     """
 
     declines_current: bool = False
@@ -569,70 +561,6 @@ def parse_flow_change(user_text: str, current_intent: Intent) -> FlowChange | No
     if requested is None and detects_refusal(user_text):
         return FlowChange(declines_current=True)
     return None
-
-
-def infer_flow_change(
-    user_text: str,
-    current_intent: Intent,
-    llm: StructuredLlm | None,
-    turn_id: str,
-    recent_messages: Sequence[BaseMessage],
-) -> FlowChange | None:
-    """Pede ao LLM a recusa e o pedido que o parser nao reconheceu.
-
-    Usa uma chamada do orcamento do turno e deixa a outra para a redacao. O
-    texto viaja mascarado, sem CPF, data ou numero. Encerrar continua exigindo
-    pedido explicito: `end_service` vindo daqui vale como recusa, nao como fim.
-    Falha ou saida invalida devolvem None, e o especialista repete a pergunta.
-    """
-    if llm is None or not turn_id or llm.calls_remaining(turn_id) < MAX_CALLS_PER_TURN:
-        return None
-    safe_user_text = mask_user_text(user_text)
-    if not safe_user_text:
-        return None
-    rendered = render_redirect_prompt(_FLOW_LABELS.get(current_intent, "atendimento"))
-    messages: list[BaseMessage] = [
-        rendered.system_message,
-        *safe_history(recent_messages),
-        HumanMessage(content=safe_user_text),
-    ]
-    try:
-        decision = llm.invoke_structured(
-            turn_id,
-            messages,
-            FlowChange,
-            prompt_version=rendered.prompt_version,
-        )
-    except IntegrationError:
-        return None
-    return _normalize_inferred_change(decision, current_intent)
-
-
-def _normalize_inferred_change(
-    decision: FlowChange, current_intent: Intent
-) -> FlowChange | None:
-    requested = decision.requested_intent
-    if requested in RESUMABLE_INTENTS and requested is not current_intent:
-        return FlowChange(requested_intent=requested)
-    if requested is Intent.HELP:
-        return FlowChange(requested_intent=Intent.HELP)
-    if decision.declines_current or requested is Intent.END_SERVICE:
-        return FlowChange(declines_current=True)
-    return None
-
-
-def detect_flow_change(
-    user_text: str,
-    current_intent: Intent,
-    llm: StructuredLlm | None,
-    turn_id: str,
-    recent_messages: Sequence[BaseMessage],
-) -> FlowChange | None:
-    """Parser primeiro, LLM depois: a ordem e a mesma da triagem."""
-    change = parse_flow_change(user_text, current_intent)
-    if change is not None:
-        return change
-    return infer_flow_change(user_text, current_intent, llm, turn_id, recent_messages)
 
 
 def reset_flow(state: ConversationState) -> None:

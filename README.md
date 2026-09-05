@@ -119,6 +119,11 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
 - **Cliente que desiste no meio de um fluxo**: cada especialista repetia a
   própria pergunta. Agora o passo é descartado e o pedido novo, quando existe,
   é entregue ao especialista certo no mesmo turno por uma aresta condicional.
+- **LLM que extrai sem inventar**: "quero uns 8 mil" ou "ganho 5000 e sou
+  registrado" só valem se cada número aparece no texto (dígito, "mil", "k" ou
+  palavra de zero a dez) e cada valor repassa pelo parser do serviço; moeda e
+  tópico só dentro dos conjuntos conhecidos; pergunta de esclarecimento só sem
+  dígito e terminando em `?`. O que não aterra cai na pergunta canônica.
 - **Reanálise pós-entrevista sem duplicar regra**: sinal transitório
   `credit_reanalysis_pending` + `update_credit_score` via tool.
 - **Falsos positivos no encerramento** (`quero sair das dívidas`): encerramento
@@ -144,8 +149,11 @@ histórico ou tools. Na triagem, autenticação, encerramento e rotas claras usa
 zero chamada; texto pós-autenticação ambíguo usa uma chamada de classificação,
 com fallback determinístico. Dentro de um fluxo, texto que não é valor, moeda,
 item da entrevista ou confirmação passa pelo parser de recusa e, se ele não
-resolver, por uma chamada de classificação (`redirect`) que diz se o cliente
-desistiu e o que pediu em vez disso. Crédito, Entrevista e Câmbio usam uma
+resolver, por uma leitura do turno (`understanding`) que traz recusa, pedido
+novo, valor ("uns 8 mil"), par de moedas, respostas da entrevista ditas de uma
+vez, tópico de dúvida e uma pergunta de esclarecimento. Cada campo só vale
+depois de aterrado no texto do cliente: o Groq entende, o Python decide. Essa
+leitura é feita uma vez por turno e compartilhada pelos nós. Crédito, Entrevista e Câmbio usam uma
 chamada por turno para redigir o texto canônico com fatos mascarados (até duas
 no turno com classificação), recebendo junto a pergunta do cliente com PII
 mascarada para responderem no tom de quem perguntou. CPF, data, números,
@@ -156,7 +164,10 @@ a resposta canônica.
 **Conhecimento**: perguntas sobre o atendimento (por que um pedido foi recusado,
 o que é score, se há cobrança, de onde vem a cotação) são respondidas a partir de
 um catálogo curado em `src/banco_agil/knowledge/catalog.py`, recuperado por
-sobreposição de termos com `BaseRetriever` do LangChain. O catálogo explica
+sobreposição de termos com `BaseRetriever` do LangChain; quando os termos não
+bastam, o Groq aponta o tópico e o código confere que ele existe. A resposta
+ganha fatos determinísticos do cliente (score atual e teto da faixa, lidos do
+repositório) entre a explicação e a pergunta final. O catálogo explica
 política e nunca calcula: limite, score e cotação continuam vindo das tools. Sem
 correspondência, o atendimento admite que não sabe em vez de inventar.
 

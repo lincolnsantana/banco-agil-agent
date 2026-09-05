@@ -12,14 +12,14 @@ from banco_agil.domain.enums import Agent, EmploymentType, Intent
 from banco_agil.domain.models import Client
 from banco_agil.prompts.registry import (
     PROMPT_REGISTRY,
-    REDIRECT_PROMPT_DEFINITION,
+    UNDERSTANDING_PROMPT_DEFINITION,
     WELCOME_PROMPT_DEFINITION,
     PromptDefinition,
 )
 from banco_agil.prompts.renderer import (
     compact_state,
     render_prompt,
-    render_redirect_prompt,
+    render_understanding_prompt,
 )
 
 EXPECTED_TOOLS = {
@@ -198,21 +198,24 @@ def test_global_prompt_demands_short_replies_without_em_dashes() -> None:
     assert "três frases" in prompt
 
 
-def test_redirect_prompt_is_registered_and_composes_within_limits() -> None:
-    assert REDIRECT_PROMPT_DEFINITION.prompt_id == "redirect"
-    assert REDIRECT_PROMPT_DEFINITION.version == "1.0.0"
-    assert REDIRECT_PROMPT_DEFINITION.variables == frozenset({"flow"})
-    assert REDIRECT_PROMPT_DEFINITION.character_limit == 1_000
+def test_understanding_prompt_is_registered_and_composes_within_limits() -> None:
+    assert UNDERSTANDING_PROMPT_DEFINITION.prompt_id == "understanding"
+    assert UNDERSTANDING_PROMPT_DEFINITION.version == "1.0.0"
+    assert UNDERSTANDING_PROMPT_DEFINITION.variables == frozenset({"flow", "topics"})
+    assert UNDERSTANDING_PROMPT_DEFINITION.character_limit == 1_000
 
-    rendered = render_redirect_prompt("consulta de cotação, aguardando a moeda")
+    rendered = render_understanding_prompt(
+        "consulta de cotação, aguardando a moeda", ("why_rejected", "what_is_score")
+    )
 
-    assert rendered.prompt_version == "global@1.5.0+redirect@1.0.0"
+    assert rendered.prompt_version == "global@1.5.0+understanding@1.0.0"
     assert rendered.tools == ()
     content = str(rendered.system_message.content)
     assert "{{" not in content
     assert "aguardando a moeda" in content
+    assert "why_rejected, what_is_score" in content
     assert (
         len(PROMPT_REGISTRY.global_prompt.template)
-        + len(REDIRECT_PROMPT_DEFINITION.template)
+        + len(UNDERSTANDING_PROMPT_DEFINITION.template)
         < 2_200
     )

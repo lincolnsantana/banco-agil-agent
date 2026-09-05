@@ -19,7 +19,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import ValidationError
 
-from banco_agil.agents._shared import humanize_reply
+from banco_agil.agents._shared import HANDOFF_REPLY, humanize_reply
 from banco_agil.agents.credit import handle_credit
 from banco_agil.agents.credit_interview import handle_credit_interview
 from banco_agil.agents.exchange import handle_exchange
@@ -34,6 +34,7 @@ from banco_agil.agents.router import (
 )
 from banco_agil.agents.state import ConversationState
 from banco_agil.agents.triage import handle_triage
+from banco_agil.agents.understanding import TurnContext
 from banco_agil.domain.enums import Agent
 from banco_agil.domain.exceptions import RepositoryError
 from banco_agil.integrations.llm import StructuredLlm
@@ -169,64 +170,70 @@ def build_graph(dependencies: GraphDependencies) -> ConversationGraph:
     """Compila o grafo de um turno sem checkpointer persistente."""
     builder = StateGraph(GraphState)
 
+    def _turn_context(state: GraphState) -> TurnContext:
+        context = state.get("context")
+        if context is None:
+            context = TurnContext(
+                llm=dependencies.llm,
+                turn_id=state["turn_id"],
+                recent_messages=_previous_messages(state),
+            )
+        return context
+
     def triage_node(state: GraphState) -> GraphUpdate:
         if not state["conversation"].authenticated:
             state["conversation"].active_agent = Agent.TRIAGE
+        context = _turn_context(state)
         reply = handle_triage(
             state["conversation"],
             state["user_text"],
             dependencies.authentication,
-            llm=dependencies.llm,
-            turn_id=state["turn_id"],
-            recent_messages=_previous_messages(state),
+            context=context,
         )
-        return _handler_update(state, reply, Agent.TRIAGE)
-
-    def _intent_llm(state: GraphState) -> StructuredLlm | None:
-        # So o primeiro no do turno pode classificar recusa: quem recebe o
-        # turno de outro no ja esta respondendo a um texto classificado.
-        return dependencies.llm if state["step_count"] == 0 else None
+        # Texto que a triagem roteou nao pode ser relido pelo especialista como
+        # troca de fluxo; ele so aproveita valor, moeda ou esclarecimento.
+        context.text_classified = reply == HANDOFF_REPLY
+        return _handler_update(state, reply, Agent.TRIAGE, context)
 
     def credit_node(state: GraphState) -> GraphUpdate:
+        context = _turn_context(state)
         reply = handle_credit(
             state["conversation"],
             state["user_text"],
             dependencies.credit,
-            llm=_intent_llm(state),
-            turn_id=state["turn_id"],
-            recent_messages=_previous_messages(state),
+            context=context,
         )
-        return _handler_update(state, reply, Agent.CREDIT)
+        return _handler_update(state, reply, Agent.CREDIT, context)
 
     def interview_node(state: GraphState) -> GraphUpdate:
+        context = _turn_context(state)
         reply = handle_credit_interview(
             state["conversation"],
             state["user_text"],
             dependencies.credit_interview,
-            llm=_intent_llm(state),
-            turn_id=state["turn_id"],
-            recent_messages=_previous_messages(state),
+            context=context,
         )
-        return _handler_update(state, reply, Agent.CREDIT_INTERVIEW)
+        return _handler_update(state, reply, Agent.CREDIT_INTERVIEW, context)
 
     def exchange_node(state: GraphState) -> GraphUpdate:
+        context = _turn_context(state)
         reply = handle_exchange(
             state["conversation"],
             state["user_text"],
             dependencies.exchange,
-            llm=_intent_llm(state),
-            turn_id=state["turn_id"],
-            recent_messages=_previous_messages(state),
+            context=context,
         )
-        return _handler_update(state, reply, Agent.EXCHANGE)
+        return _handler_update(state, reply, Agent.EXCHANGE, context)
 
     def knowledge_node(state: GraphState) -> GraphUpdate:
+        context = _turn_context(state)
         reply = handle_knowledge(
             state["conversation"],
             state["user_text"],
             dependencies.knowledge,
+            context=context,
         )
-        return _handler_update(state, reply, Agent.KNOWLEDGE)
+        return _handler_update(state, reply, Agent.KNOWLEDGE, context)
 
     def humanize_node(state: GraphState) -> GraphUpdate:
         reply = humanize_reply(
@@ -260,12 +267,15 @@ def build_graph(dependencies: GraphDependencies) -> ConversationGraph:
     return builder.compile(name="banco-agil-conversation")
 
 
-def _handler_update(state: GraphState, reply: str, agent: Agent) -> GraphUpdate:
+def _handler_update(
+    state: GraphState, reply: str, agent: Agent, context: TurnContext
+) -> GraphUpdate:
     return {
         "conversation": state["conversation"],
         "reply": reply,
         "step_count": state["step_count"] + 1,
         "responding_agent": agent,
+        "context": context,
     }
 
 

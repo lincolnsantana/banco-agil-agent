@@ -9,8 +9,9 @@ Dados fictícios: CPF `11144477735`, nascimento `20/05/1990`. Sem chave de LLM.
 - Mostre o fluxo em uma frase: `UI -> ConversationService -> Graph -> Tools ->
   Services -> CSV/SQLite/HTTP`.
 - Destaque: apresentação e três especialistas com Groq (fallback determinístico),
-  parser primeiro e Groq só no ambíguo (intenção na triagem, recusa ou troca de
-  assunto em qualquer especialista), no máximo 1 classificação e 1 redação por
+  parser primeiro e Groq só no ambíguo, com uma leitura do turno que traz
+  intenção, recusa, valor, moeda, respostas da entrevista e esclarecimento,
+  tudo aterrado no texto antes de valer; no máximo 1 leitura e 1 redação por
   turno, tools com estado injetado e CPF sempre vindo do estado confiável.
 
 ## 0:45–2:00 — Triagem + Crédito (consulta e aumento)

@@ -3,8 +3,7 @@
 import re
 from collections.abc import Sequence
 
-from langchain_core.messages import BaseMessage, HumanMessage
-from pydantic import BaseModel
+from langchain_core.messages import BaseMessage
 
 from banco_agil.agents._shared import (
     HANDOFF_REPLY,
@@ -17,26 +16,17 @@ from banco_agil.agents._shared import (
     detects_information_question,
     end_conversation,
     end_reply_if_requested,
-    infer_flow_change,
     is_help_request,
-    mask_user_text,
     parse_flow_answer,
-    safe_history,
 )
 from banco_agil.agents.state import ConversationState
+from banco_agil.agents.understanding import TurnContext, resolve_context
 from banco_agil.domain.enums import Agent, EndReason, Intent
-from banco_agil.domain.exceptions import IntegrationError, RepositoryError
+from banco_agil.domain.exceptions import RepositoryError
 from banco_agil.domain.models import AuthenticationResult, CpfValidationResult
 from banco_agil.integrations.llm import StructuredLlm
-from banco_agil.prompts.renderer import render_prompt
 from banco_agil.services.authentication import AuthenticationService
 from banco_agil.tools.banking import authenticate_client, validate_client_cpf
-
-
-class IntentDecision(BaseModel):
-    """Intenção bancária classificada sem permitir escolha direta de agente."""
-
-    intent: Intent
 
 
 def handle_triage(
@@ -44,11 +34,13 @@ def handle_triage(
     user_text: str,
     service: AuthenticationService,
     *,
+    context: TurnContext | None = None,
     llm: StructuredLlm | None = None,
     turn_id: str = "",
     recent_messages: Sequence[BaseMessage] = (),
 ) -> str:
     """Processa um turno de triagem e atualiza o estado confiavel."""
+    context = resolve_context(context, llm, turn_id, recent_messages)
     end_reply = end_reply_if_requested(state, user_text)
     if end_reply is not None:
         return end_reply
@@ -60,7 +52,7 @@ def handle_triage(
     if state.pending_flow is not None and not _supersedes_pending_flow(
         user_text, state.pending_flow
     ):
-        return _handle_flow_answer(state, user_text, llm, turn_id, recent_messages)
+        return _handle_flow_answer(state, user_text, context)
     if state.pending_flow is not None:
         # Pedido novo no lugar da confirmacao: a oferta anterior caduca, em vez
         # de repetir "nao consegui confirmar" enquanto o cliente muda de assunto.
@@ -83,21 +75,30 @@ def handle_triage(
         return "Certo. Vou explicar."
 
     intent = _deterministic_intent(user_text)
+    understanding = None
     if intent is None:
-        intent = _llm_intent(state, user_text, llm, turn_id, recent_messages)
+        understanding = context.understand(user_text, Intent.UNKNOWN)
+        intent = understanding.intent if understanding is not None else None
 
     if intent is Intent.HELP:
         state.intent = Intent.UNKNOWN
         state.active_agent = Agent.TRIAGE
         return HELP_REPLY
 
-    if intent not in {
-        Intent.CREDIT_LIMIT,
-        Intent.LIMIT_INCREASE,
-        Intent.CREDIT_INTERVIEW,
-        Intent.EXCHANGE_RATE,
-    }:
-        return "Posso ajudar com limite de crédito ou cotação de moedas. O que deseja?"
+    if intent is Intent.INFORMATION:
+        # O LLM reconheceu uma duvida que o parser nao pegou; o Conhecimento
+        # reaproveita a leitura para achar o topico no catalogo.
+        state.intent = Intent.INFORMATION
+        state.active_agent = Agent.KNOWLEDGE
+        return "Certo. Vou explicar."
+
+    if intent not in RESUMABLE_INTENTS:
+        clarification = (
+            understanding.clarification if understanding is not None else None
+        )
+        return clarification or (
+            "Posso ajudar com limite de crédito ou cotação de moedas. O que deseja?"
+        )
 
     state.intent = intent
     state.active_agent = agent_for_intent(intent)
@@ -157,9 +158,7 @@ def _supersedes_pending_flow(user_text: str, pending: Intent | None) -> bool:
 def _handle_flow_answer(
     state: ConversationState,
     user_text: str,
-    llm: StructuredLlm | None,
-    turn_id: str,
-    recent_messages: Sequence[BaseMessage],
+    context: TurnContext,
 ) -> str:
     """Confirma o fluxo pendente com resposta ampla ou repete a pergunta.
 
@@ -169,7 +168,10 @@ def _handle_flow_answer(
     target = state.pending_flow
     answer = parse_flow_answer(user_text)
     if answer is None and target is not None:
-        change = infer_flow_change(user_text, target, llm, turn_id, recent_messages)
+        understanding = context.understand(user_text, target)
+        change = (
+            understanding.flow_change(target) if understanding is not None else None
+        )
         if change is not None and not change.declines_current:
             return apply_flow_change(state, change)
         if change is not None:
@@ -285,39 +287,3 @@ def _resume_requested_intent(state: ConversationState) -> str:
 def _deterministic_intent(user_text: str) -> Intent | None:
     """Reaproveita o classificador que casa acao e substantivo do pedido."""
     return classify_banking_request(user_text)
-
-
-def _llm_intent(
-    state: ConversationState,
-    user_text: str,
-    llm: StructuredLlm | None,
-    turn_id: str,
-    recent_messages: Sequence[BaseMessage],
-) -> Intent | None:
-    """Classifica somente texto pós-autenticação não resolvido pelo parser.
-
-    O texto viaja mascarado, sem CPF, data ou número, em vez de filtrado por
-    termos permitidos: recusa e pedido vago precisam de negação e contexto, e
-    a saída é um enum fechado que a triagem ainda valida.
-    """
-    if llm is None or not turn_id:
-        return None
-    safe_user_text = mask_user_text(user_text)
-    if not safe_user_text:
-        return None
-    rendered = render_prompt(state)
-    messages: list[BaseMessage] = [
-        rendered.system_message,
-        *safe_history(recent_messages),
-        HumanMessage(content=safe_user_text),
-    ]
-    try:
-        decision = llm.invoke_structured(
-            turn_id,
-            messages,
-            IntentDecision,
-            prompt_version=rendered.prompt_version,
-        )
-    except IntegrationError:
-        return None
-    return decision.intent

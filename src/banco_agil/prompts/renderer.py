@@ -1,6 +1,7 @@
 """Renderizacao de prompt com contexto compacto e sem PII."""
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from langchain_core.messages import SystemMessage
@@ -10,7 +11,7 @@ from banco_agil.agents.state import ConversationState, CreditInterviewDraft
 from banco_agil.domain.enums import Agent
 from banco_agil.prompts.registry import (
     PROMPT_REGISTRY,
-    REDIRECT_PROMPT_DEFINITION,
+    UNDERSTANDING_PROMPT_DEFINITION,
     PromptDefinition,
     PromptRegistry,
 )
@@ -92,21 +93,26 @@ def render_prompt(
     )
 
 
-def render_redirect_prompt(
+def render_understanding_prompt(
     flow: str,
+    topics: Sequence[str],
     registry: PromptRegistry = PROMPT_REGISTRY,
-    definition: PromptDefinition = REDIRECT_PROMPT_DEFINITION,
+    definition: PromptDefinition = UNDERSTANDING_PROMPT_DEFINITION,
 ) -> RenderedPrompt:
-    """Compoe global e classificador de recusa para o fluxo em andamento.
+    """Compoe global e entendimento do turno para o fluxo em andamento.
 
-    Nao envia estado nem tools: a saida e um schema fechado de intencao, e o
-    fluxo atual chega como texto curto em vez de contexto completo.
+    Nao envia estado nem tools: a saida e um schema fechado que o Python
+    aterra no texto do cliente antes de usar. O fluxo atual e os topicos do
+    catalogo chegam como texto curto, sem dado do cliente.
     """
     static_length = len(registry.global_prompt.template) + len(definition.template)
     if static_length >= _COMBINED_PROMPT_LIMIT:
         raise ValueError("combined prompt exceeds character limit")
     content = "\n\n".join(
-        (registry.global_prompt.render(), definition.render(flow=flow))
+        (
+            registry.global_prompt.render(),
+            definition.render(flow=flow, topics=", ".join(topics)),
+        )
     )
     return RenderedPrompt(
         system_message=SystemMessage(content=content),

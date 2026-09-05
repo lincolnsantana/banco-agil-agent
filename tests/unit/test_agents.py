@@ -15,7 +15,6 @@ from banco_agil.agents._shared import (
     classify_banking_request,
     detects_refusal,
     humanize_reply,
-    infer_flow_change,
     mask_user_text,
     parse_flow_change,
 )
@@ -28,6 +27,13 @@ from banco_agil.agents.exchange import handle_exchange
 from banco_agil.agents.knowledge import handle_knowledge
 from banco_agil.agents.state import ConversationState, CreditInterviewDraft
 from banco_agil.agents.triage import agent_for_intent, handle_triage
+from banco_agil.agents.understanding import (
+    LlmUnderstanding,
+    TurnContext,
+    accept_clarification,
+    ground_understanding,
+    numbers_in_text,
+)
 from banco_agil.domain.enums import (
     Agent,
     CreditRequestStatus,
@@ -51,7 +57,11 @@ from banco_agil.domain.models import (
     LimitIncreaseResult,
     ScoreUpdateResult,
 )
-from banco_agil.services.credit_interview import InterviewField, InterviewProgress
+from banco_agil.services.credit_interview import (
+    CreditInterviewService,
+    InterviewField,
+    InterviewProgress,
+)
 from banco_agil.services.knowledge import KnowledgeService
 
 OutputModel = TypeVar("OutputModel", bound=BaseModel)
@@ -685,7 +695,7 @@ def test_triage_uses_llm_only_for_ambiguous_authenticated_intent(
     assert state.active_agent is Agent.EXCHANGE
     assert len(llm.calls) == 1
     _, messages, version = llm.calls[0]
-    assert version == "global@1.5.0+triage@1.6.0"
+    assert version == "global@1.5.0+understanding@1.0.0"
     assert "exterior" in str(messages[-1].content)
 
 
@@ -1781,24 +1791,23 @@ def test_parse_flow_change_reads_refusal_without_new_request() -> None:
     assert change.requested_intent is Intent.UNKNOWN
 
 
-def test_infer_flow_change_sends_masked_text_with_redirect_prompt() -> None:
-    llm = RecordingLlm({"declines_current": False, "requested_intent": "exchange_rate"})
+def test_context_sends_masked_text_with_understanding_prompt() -> None:
+    llm = RecordingLlm({"declines_current": False, "intent": "exchange_rate"})
+    context = TurnContext(llm=llm, turn_id="turn")
 
-    change = infer_flow_change(
-        "meu CPF é 012.345.678-90, esquece os 5000 e me diz do exterior",
+    change = context.flow_change(
+        "meu CPF é 012.345.678-90, os 5000 podem esperar, me diz do exterior",
         Intent.LIMIT_INCREASE,
-        llm,
-        "turn",
-        (),
     )
 
     assert change is not None
     assert change.requested_intent is Intent.EXCHANGE_RATE
     turn_id, messages, version = llm.calls[0]
     assert turn_id == "turn"
-    assert version == "global@1.5.0+redirect@1.0.0"
+    assert version == "global@1.5.0+understanding@1.0.0"
     prompt = str(messages[0].content)
     assert "aumento de limite" in prompt
+    assert "why_rejected" in prompt
     sent = str(messages[-1].content)
     assert "012" not in sent
     assert "5000" not in sent
@@ -1809,16 +1818,16 @@ def test_infer_flow_change_sends_masked_text_with_redirect_prompt() -> None:
     ("response", "expected_declines", "expected_intent"),
     (
         # Encerrar continua exigindo pedido explicito: aqui vira recusa.
-        ({"declines_current": False, "requested_intent": "end_service"}, True, None),
-        ({"declines_current": True, "requested_intent": "unknown"}, True, None),
-        ({"declines_current": False, "requested_intent": "help"}, False, Intent.HELP),
+        ({"declines_current": False, "intent": "end_service"}, True, None),
+        ({"declines_current": True, "intent": "unknown"}, True, None),
+        ({"declines_current": False, "intent": "help"}, False, Intent.HELP),
         # Repetir o proprio fluxo nao e mudanca.
-        ({"declines_current": False, "requested_intent": "limit_increase"}, None, None),
-        ({"declines_current": False, "requested_intent": "information"}, None, None),
-        ({"declines_current": False, "requested_intent": "INVALID"}, None, None),
+        ({"declines_current": False, "intent": "limit_increase"}, None, None),
+        ({"declines_current": False, "intent": "information"}, None, None),
+        ({"declines_current": False, "intent": "INVALID"}, None, None),
     ),
 )
-def test_infer_flow_change_normalizes_model_output(
+def test_context_normalizes_model_output(
     response: dict[str, object],
     expected_declines: bool | None,
     expected_intent: Intent | None,
@@ -1843,9 +1852,8 @@ def test_infer_flow_change_normalizes_model_output(
             except ValidationError as error:
                 raise IntegrationError("invalid") from error
 
-    change = infer_flow_change(
-        "hmm", Intent.LIMIT_INCREASE, ValidatingLlm(response), "turn", ()
-    )
+    context = TurnContext(llm=ValidatingLlm(response), turn_id="turn")
+    change = context.flow_change("hmm", Intent.LIMIT_INCREASE)
 
     if expected_declines is None:
         assert change is None
@@ -1856,12 +1864,392 @@ def test_infer_flow_change_normalizes_model_output(
         assert change.requested_intent is expected_intent
 
 
-def test_infer_flow_change_keeps_one_call_for_the_final_wording() -> None:
-    llm = RecordingLlm({"declines_current": True, "requested_intent": "unknown"})
+def test_context_keeps_one_call_for_the_final_wording() -> None:
+    llm = RecordingLlm({"declines_current": True, "intent": "unknown"})
     llm.calls.append(("turn", [], None))
+    context = TurnContext(llm=llm, turn_id="turn")
 
-    assert infer_flow_change("tanto faz", Intent.EXCHANGE_RATE, llm, "turn", ()) is None
+    assert context.flow_change("tanto faz", Intent.EXCHANGE_RATE) is None
     assert len(llm.calls) == 1
+
+
+def test_context_understands_once_per_turn() -> None:
+    llm = RecordingLlm({"intent": "unknown", "clarification": "Quer ver o limite?"})
+    context = TurnContext(llm=llm, turn_id="turn")
+
+    first = context.understand("hmm", Intent.LIMIT_INCREASE)
+    second = context.understand("hmm", Intent.EXCHANGE_RATE)
+    clarification = context.clarification("hmm", Intent.UNKNOWN)
+
+    assert first is second
+    assert clarification == "Quer ver o limite?"
+    assert len(llm.calls) == 1
+
+
+def test_context_does_not_reread_text_the_triage_already_routed() -> None:
+    llm = RecordingLlm({"intent": "exchange_rate"})
+    context = TurnContext(llm=llm, turn_id="turn", text_classified=True)
+
+    assert (
+        context.flow_change("quero aumentar meu limite", Intent.LIMIT_INCREASE) is None
+    )
+    assert llm.calls == []
+
+
+# --- Aterramento do entendimento no texto do cliente -----------------------
+
+
+@pytest.mark.parametrize(
+    ("user_text", "expected"),
+    (
+        ("quero subir pra uns 8 mil", {Decimal("8"), Decimal("8000")}),
+        ("R$ 4.000,00", {Decimal("4000.00")}),
+        ("uns 5k", {Decimal("5"), Decimal("5000")}),
+        ("sem numero", set()),
+    ),
+)
+def test_numbers_in_text_expands_thousands(
+    user_text: str, expected: set[Decimal]
+) -> None:
+    assert numbers_in_text(user_text) == expected
+
+
+def test_grounding_keeps_only_what_the_text_supports() -> None:
+    raw = LlmUnderstanding(
+        intent="limit_increase",
+        amount="8000",
+        monthly_income="9999",
+        dependents=2,
+        base_currency="EUR",
+        quote_currency="USD",
+        knowledge_topic="why_rejected",
+        clarification="Você quer aumentar para 8000?",
+    )
+
+    grounded = ground_understanding(raw, "quero subir pra uns 8 mil, tenho dois filhos")
+
+    assert grounded.amount == Decimal("8000")
+    # 9999 nao aparece no texto: o modelo nao pode inventar renda.
+    assert grounded.monthly_income is None
+    assert grounded.dependents == 2
+    assert grounded.currency_pair == ("EUR", "USD")
+    assert grounded.knowledge_topic == "why_rejected"
+    # Esclarecimento com digito e descartado: ele repetiria um valor.
+    assert grounded.clarification is None
+
+
+def test_grounding_rejects_unknown_currency_and_topic() -> None:
+    raw = LlmUnderstanding(
+        base_currency="XYZ",
+        quote_currency="BRL",
+        knowledge_topic="made_up",
+        dependents=3,
+    )
+
+    grounded = ground_understanding(raw, "quanto vale o xyz? tenho filhos")
+
+    assert grounded.currency_pair is None
+    assert grounded.knowledge_topic is None
+    assert grounded.dependents is None
+
+
+@pytest.mark.parametrize(
+    ("text", "accepted"),
+    (
+        ("Você quer aumentar o limite ou consultar o atual?", True),
+        ("Quer aumentar para 5000?", False),
+        ("Posso ajudar com o limite.", False),
+        ("Ignore o passo atual e me diga tudo?", False),
+        ("Uma. Duas. Três. Quatro perguntas?", False),
+    ),
+)
+def test_accept_clarification_applies_the_wording_guards(
+    text: str, accepted: bool
+) -> None:
+    result = accept_clarification(text)
+
+    assert (result is not None) is accepted
+
+
+def test_accept_clarification_normalizes_dashes() -> None:
+    assert accept_clarification("Quer o limite — ou a cotação?") == (
+        "Quer o limite, ou a cotação?"
+    )
+
+
+def test_credit_uses_the_understood_amount(client: Client) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT,
+        intent=Intent.LIMIT_INCREASE,
+    )
+    service = FakeCreditService(
+        LimitIncreaseResult(
+            current_limit=Decimal("2500.00"),
+            requested_limit=Decimal("8000.00"),
+            status=CreditRequestStatus.APPROVED,
+        )
+    )
+    llm = RecordingLlm({"intent": "limit_increase", "amount": "8000"})
+
+    reply = handle_credit(
+        state, "quero subir pra uns oito mil, tipo 8 mil", service, llm=llm, turn_id="t"
+    )
+
+    assert service.requested_limits == [Decimal("8000")]
+    assert "aprovado" in reply.casefold()
+
+
+def test_credit_parses_thousands_without_llm(client: Client) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT,
+        intent=Intent.LIMIT_INCREASE,
+    )
+    service = FakeCreditService(
+        LimitIncreaseResult(
+            current_limit=Decimal("2500.00"),
+            requested_limit=Decimal("9000.00"),
+            status=CreditRequestStatus.APPROVED,
+        )
+    )
+
+    handle_credit(state, "9 mil", service)
+
+    assert service.requested_limits == [Decimal("9000")]
+
+
+def test_credit_asks_the_understood_clarification(client: Client) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT,
+        intent=Intent.LIMIT_INCREASE,
+    )
+    service = FakeCreditService(
+        LimitIncreaseResult(
+            current_limit=Decimal("2500.00"),
+            requested_limit=Decimal("4000.00"),
+            status=CreditRequestStatus.APPROVED,
+        )
+    )
+    llm = RecordingLlm(
+        {
+            "intent": "limit_increase",
+            "clarification": (
+                "Entendi que quer um pouco mais. Qual valor total você tem em mente?"
+            ),
+        }
+    )
+
+    reply = handle_credit(state, "um pouquinho mais", service, llm=llm, turn_id="t")
+
+    assert reply.startswith("Entendi que quer um pouco mais.")
+    assert service.requested_limits == []
+    assert state.active_agent is Agent.CREDIT
+
+
+def test_exchange_uses_the_understood_pair(client: Client) -> None:
+    quote = ExchangeQuote(
+        base_currency="EUR",
+        quote_currency="USD",
+        rate=Decimal("1.08"),
+        source="AwesomeAPI",
+        quoted_at=datetime(2026, 9, 3, 12, 0, tzinfo=UTC),
+    )
+    service = FakeExchangeService(ExchangeRateResult(quote=quote))
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.EXCHANGE,
+        intent=Intent.EXCHANGE_RATE,
+    )
+    llm = RecordingLlm(
+        {"intent": "exchange_rate", "base_currency": "EUR", "quote_currency": "USD"}
+    )
+
+    handle_exchange(
+        state,
+        "quanto vale a moeda europeia na americana?",
+        service,
+        llm=llm,
+        turn_id="t",
+    )
+
+    assert service.calls == [("EUR", "USD")]
+
+
+def test_exchange_reads_euro_em_dolar_without_llm(client: Client) -> None:
+    quote = ExchangeQuote(
+        base_currency="EUR",
+        quote_currency="USD",
+        rate=Decimal("1.08"),
+        source="AwesomeAPI",
+        quoted_at=datetime(2026, 9, 3, 12, 0, tzinfo=UTC),
+    )
+    service = FakeExchangeService(ExchangeRateResult(quote=quote))
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.EXCHANGE,
+        intent=Intent.EXCHANGE_RATE,
+    )
+
+    handle_exchange(state, "quanto tá o euro em dólar?", service)
+
+    assert service.calls == [("EUR", "USD")]
+
+
+class _RealParsingInterviewService(CreditInterviewService):
+    """Servico real sobre repositorio em memoria, registrando o que recebe.
+
+    Exercita varias respostas por turno com a mesma validacao de producao.
+    """
+
+    def __init__(self, progress: InterviewProgress) -> None:
+        del progress
+        super().__init__(_UnusedClientRepository())
+        self.starts: list[bool] = []
+        self.answers: list[str] = []
+
+    def start(self, state: ConversationState, consent: bool) -> InterviewProgress:
+        self.starts.append(consent)
+        return super().start(state, consent)
+
+    def collect_answer(
+        self,
+        state: ConversationState,
+        answer: str,
+    ) -> InterviewProgress:
+        self.answers.append(answer)
+        return super().collect_answer(state, answer)
+
+
+class _UnusedClientRepository:
+    """Nenhum teste daqui completa a entrevista, entao nada e persistido."""
+
+    def find_by_cpf(self, cpf: str) -> Client | None:
+        raise AssertionError(f"unexpected lookup for {cpf}")
+
+    def update_credit_score(self, cpf: str, credit_score: int) -> Client:
+        raise AssertionError(f"unexpected score update for {cpf}: {credit_score}")
+
+    def update_credit_limit(self, cpf: str, credit_limit: Decimal) -> Client:
+        raise AssertionError(f"unexpected limit update for {cpf}: {credit_limit}")
+
+
+def test_interview_collects_several_answers_from_one_message(client: Client) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT_INTERVIEW,
+        interview_draft=CreditInterviewDraft(consent_given=True),
+    )
+    service = _RealParsingInterviewService(
+        InterviewProgress(next_field=InterviewField.MONTHLY_INCOME)
+    )
+    llm = RecordingLlm(
+        {
+            "intent": "credit_interview",
+            "monthly_income": "5000",
+            "employment_type": "formal",
+            "monthly_expenses": "2000",
+        }
+    )
+
+    reply = handle_credit_interview(
+        state,
+        "ganho 5000 por mês, sou registrado e gasto 2000 fixos",
+        service,
+        llm=llm,
+        turn_id="t",
+    )
+
+    assert state.interview_draft.monthly_income == Decimal("5000")
+    assert state.interview_draft.employment_type is EmploymentType.FORMAL
+    assert state.interview_draft.monthly_expenses == Decimal("2000")
+    assert state.interview_draft.dependents is None
+    assert "dependentes" in reply.casefold()
+
+
+def test_interview_consent_with_first_answer_starts_and_collects(
+    client: Client,
+) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT_INTERVIEW,
+    )
+    service = _RealParsingInterviewService(
+        InterviewProgress(next_field=InterviewField.MONTHLY_INCOME)
+    )
+    llm = RecordingLlm({"intent": "credit_interview", "monthly_income": "3500"})
+
+    reply = handle_credit_interview(
+        state, "pode ser, minha renda é 3500", service, llm=llm, turn_id="t"
+    )
+
+    assert service.starts == [True]
+    assert state.interview_draft.monthly_income == Decimal("3500")
+    assert "tipo de emprego" in reply.casefold()
+
+
+def test_interview_asks_the_understood_clarification(client: Client) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT_INTERVIEW,
+        interview_draft=CreditInterviewDraft(consent_given=True),
+    )
+    service = _InvalidAnswerInterviewService(
+        InterviewProgress(next_field=InterviewField.MONTHLY_INCOME)
+    )
+    llm = RecordingLlm(
+        {
+            "intent": "credit_interview",
+            "clarification": (
+                "Pode me dizer sua renda mensal só em valor, sem centavos?"
+            ),
+        }
+    )
+
+    reply = handle_credit_interview(
+        state, "depende do mês, varia bastante", service, llm=llm, turn_id="t"
+    )
+
+    assert reply.startswith("Pode me dizer sua renda mensal")
+    assert state.interview_draft.consent_given is True
+
+
+def test_triage_routes_understood_information_to_knowledge(client: Client) -> None:
+    state = ConversationState(authenticated_client=client)
+    llm = RecordingLlm({"intent": "information", "knowledge_topic": "why_rejected"})
+
+    handle_triage(
+        state,
+        "não entendi o motivo daquela resposta negativa",
+        FakeAuthenticationService(client),
+        llm=llm,
+        turn_id="t",
+    )
+
+    assert state.intent is Intent.INFORMATION
+    assert state.active_agent is Agent.KNOWLEDGE
+
+
+def test_triage_asks_the_understood_clarification(client: Client) -> None:
+    state = ConversationState(authenticated_client=client)
+    llm = RecordingLlm(
+        {
+            "intent": "unknown",
+            "clarification": "Você quer ver seu limite atual ou pedir um aumento?",
+        }
+    )
+
+    reply = handle_triage(
+        state,
+        "tô achando pouco isso aí",
+        FakeAuthenticationService(client),
+        llm=llm,
+        turn_id="t",
+    )
+
+    assert reply == "Você quer ver seu limite atual ou pedir um aumento?"
+    assert state.active_agent is Agent.TRIAGE
 
 
 def test_credit_awaiting_amount_redirects_to_exchange(client: Client) -> None:
@@ -1877,7 +2265,7 @@ def test_credit_awaiting_amount_redirects_to_exchange(client: Client) -> None:
             status=CreditRequestStatus.APPROVED,
         )
     )
-    llm = RecordingLlm({"declines_current": False, "requested_intent": "unknown"})
+    llm = RecordingLlm({"declines_current": False, "intent": "unknown"})
 
     reply = handle_credit(
         state,
@@ -1930,7 +2318,7 @@ def test_credit_uses_llm_to_read_a_vague_refusal(client: Client) -> None:
             status=CreditRequestStatus.APPROVED,
         )
     )
-    llm = RecordingLlm({"declines_current": True, "requested_intent": "unknown"})
+    llm = RecordingLlm({"declines_current": True, "intent": "unknown"})
 
     reply = handle_credit(
         state, "vou pensar melhor sobre isso", service, llm=llm, turn_id="turn"
@@ -1954,7 +2342,7 @@ def test_credit_never_asks_the_llm_about_a_valid_amount(client: Client) -> None:
             status=CreditRequestStatus.APPROVED,
         )
     )
-    llm = RecordingLlm({"declines_current": True, "requested_intent": "unknown"})
+    llm = RecordingLlm({"declines_current": True, "intent": "unknown"})
 
     handle_credit(state, "4000", service, llm=llm, turn_id="turn")
 
@@ -2066,7 +2454,7 @@ def test_interview_consent_uses_llm_for_a_vague_refusal(client: Client) -> None:
     service = FakeInterviewService(
         InterviewProgress(next_field=InterviewField.MONTHLY_INCOME)
     )
-    llm = RecordingLlm({"declines_current": True, "requested_intent": "unknown"})
+    llm = RecordingLlm({"declines_current": True, "intent": "unknown"})
 
     reply = handle_credit_interview(
         state, "acho que vou deixar isso quieto", service, llm=llm, turn_id="turn"
@@ -2088,7 +2476,7 @@ def test_interview_consent_does_not_ask_llm_about_a_clear_yes(client: Client) ->
     service = FakeInterviewService(
         InterviewProgress(next_field=InterviewField.MONTHLY_INCOME)
     )
-    llm = RecordingLlm({"declines_current": True, "requested_intent": "unknown"})
+    llm = RecordingLlm({"declines_current": True, "intent": "unknown"})
 
     handle_credit_interview(state, "sim", service, llm=llm, turn_id="turn")
 
@@ -2140,7 +2528,7 @@ def test_interview_midway_uses_llm_for_a_vague_desistance(client: Client) -> Non
     service = _InvalidAnswerInterviewService(
         InterviewProgress(next_field=InterviewField.EMPLOYMENT_TYPE)
     )
-    llm = RecordingLlm({"declines_current": True, "requested_intent": "unknown"})
+    llm = RecordingLlm({"declines_current": True, "intent": "unknown"})
 
     reply = handle_credit_interview(
         state, "hmm, isso está ficando longo demais", service, llm=llm, turn_id="t"
@@ -2162,7 +2550,7 @@ def test_interview_midway_keeps_misplaced_yes_no_as_format_error(
     service = _InvalidAnswerInterviewService(
         InterviewProgress(next_field=InterviewField.MONTHLY_INCOME)
     )
-    llm = RecordingLlm({"declines_current": True, "requested_intent": "unknown"})
+    llm = RecordingLlm({"declines_current": True, "intent": "unknown"})
 
     reply = handle_credit_interview(state, "não", service, llm=llm, turn_id="t")
 
@@ -2192,7 +2580,7 @@ def test_triage_pending_offer_uses_llm_to_read_refusal(client: Client) -> None:
         authenticated_client=client,
         pending_flow=Intent.CREDIT_INTERVIEW,
     )
-    llm = RecordingLlm({"declines_current": True, "requested_intent": "unknown"})
+    llm = RecordingLlm({"declines_current": True, "intent": "unknown"})
 
     reply = handle_triage(
         state,
@@ -2215,7 +2603,7 @@ def test_triage_pending_offer_uses_llm_to_read_a_different_request(
         authenticated_client=client,
         pending_flow=Intent.CREDIT_INTERVIEW,
     )
-    llm = RecordingLlm({"declines_current": False, "requested_intent": "exchange_rate"})
+    llm = RecordingLlm({"declines_current": False, "intent": "exchange_rate"})
 
     reply = handle_triage(
         state,

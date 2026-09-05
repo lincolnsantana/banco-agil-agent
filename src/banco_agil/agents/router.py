@@ -6,6 +6,7 @@ from langchain_core.messages import BaseMessage
 
 from banco_agil.agents._shared import HANDOFF_REPLY
 from banco_agil.agents.state import ConversationState
+from banco_agil.agents.understanding import TurnContext
 from banco_agil.domain.enums import Agent
 
 MAX_HANDLER_STEPS = 2
@@ -31,6 +32,8 @@ class GraphState(TypedDict):
     reply: str
     responding_agent: Agent | None
     step_count: int
+    # Entendimento do turno, criado pelo primeiro no e reaproveitado pelos demais.
+    context: TurnContext | None
 
 
 class GraphUpdate(TypedDict, total=False):
@@ -41,6 +44,7 @@ class GraphUpdate(TypedDict, total=False):
     reply: str
     responding_agent: Agent | None
     step_count: int
+    context: TurnContext | None
 
 
 def route_entry(state: GraphState) -> NodeRoute:

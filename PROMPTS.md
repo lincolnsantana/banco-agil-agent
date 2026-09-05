@@ -15,10 +15,9 @@ PROMPT_GLOBAL + PROMPT_DO_ESPECIALISTA_ATIVO + ESTADO_MÍNIMO
 Nunca enviar prompts de especialistas inativos.
 A apresentação inicial usa somente o prompt `welcome`, sem estado, histórico ou
 tools. Na triagem, autenticação e rotas claras são determinísticas; somente texto
-pós-autenticação ainda ambíguo envia o prompt de triagem ao provedor. O prompt
-`redirect` não pertence a um especialista: qualquer nó o usa, composto com o
-global, quando o texto não é resposta válida ao passo atual e o parser não
-reconheceu recusa nem pedido novo.
+que o parser não resolve vai ao provedor, pelo prompt `understanding`. Esse
+prompt não pertence a um especialista: qualquer nó o usa, composto com o
+global, uma vez por turno, e a leitura é compartilhada pelos nós seguintes.
 
 ## 2. Versões e limites
 
@@ -31,7 +30,7 @@ reconheceu recusa nem pedido novo.
 | `credit_interview` | `1.5.0` | 1.000 |
 | `exchange` | `1.5.0` | 1.000 |
 | `knowledge` | `1.0.0` | 1.000 |
-| `redirect` | `1.0.0` | 1.000 |
+| `understanding` | `1.0.0` | 1.000 |
 
 O prompt global somado ao especialista deve permanecer abaixo de 2.200
 caracteres, antes do estado. O estado dinâmico deve ficar abaixo de 500
@@ -256,39 +255,55 @@ O conteúdo recuperado vem do catálogo curado em
 `src/banco_agil/knowledge/catalog.py`, não do modelo. A recuperação é por
 sobreposição de termos, sem embedding nem banco vetorial.
 
-## 10.1. Prompt de recusa e redirecionamento
+## 10.1. Prompt de entendimento do turno
 
-ID: `redirect`  
+ID: `understanding`  
 Versão: `1.0.0`  
-Variável: `flow` (rótulo curto do passo em andamento, sem dado do cliente)
+Variáveis: `flow` (rótulo curto do passo em andamento, sem dado do cliente) e
+`topics` (chaves do catálogo de conhecimento, separadas por vírgula)
 
 ```text
-Tarefa: classificar o turno, sem responder ao cliente.
+Tarefa: entender o turno do cliente, sem responder a ele.
 
-O cliente está no meio de: {{ flow }}. A última mensagem do assistente pediu a
-próxima informação desse passo. Decida se ele recusa, desiste ou adia esse passo
-(declines_current) e qual serviço pede em vez disso (requested_intent):
-credit_limit para consultar limite, limit_increase para aumentar limite,
-credit_interview para entrevista ou score, exchange_rate para cotação de moedas,
-help para conhecer os serviços, end_service para encerrar, unknown quando não
-pede nada novo.
-
-Resposta ao passo atual, mesmo torta, não é recusa nem pedido novo: valor,
-moeda, tipo de emprego e sim ou não devolvem unknown sem recusa. Dúvida sobre o
-passo atual também é unknown. Só marque recusa quando o cliente disser que não
-quer, não vai ou prefere parar. Nunca deduza serviço que ele não citou.
+Passo atual: {{ flow }}. Extraia só o que ele disse; nunca deduza nem complete.
+intent: credit_limit, limit_increase, credit_interview, exchange_rate,
+information, help, end_service ou unknown. declines_current: verdadeiro só se
+ele recusar, desistir ou adiar o passo atual; resposta ao passo não é recusa.
+amount: limite total desejado, só dígitos ("8 mil" é 8000). base_currency e
+quote_currency: códigos ISO; "dólar" é USD e BRL, "euro em dólar" é EUR e USD.
+Entrevista, se ele informar: monthly_income e monthly_expenses só dígitos,
+employment_type formal, autônomo ou desempregado, dependents inteiro,
+has_active_debts. knowledge_topic: um destes, se ele pergunta sobre o assunto
+em vez de pedir ação: {{ topics }}.
+clarification: se o pedido ficou vago, uma pergunta curta e cordial, sem
+número e sem travessão, que o ajude a dizer o que quer; senão vazio.
 ```
 
-Saída estruturada: `{ "declines_current": bool, "requested_intent": Intent }`.
-O código normaliza a saída antes de agir: só `credit_limit`, `limit_increase`,
-`credit_interview` e `exchange_rate` diferentes do fluxo atual redirecionam;
-`help` reapresenta os serviços; `end_service` vale como recusa, porque encerrar
-continua exigindo pedido explícito e determinístico; `information`, o próprio
-fluxo ou saída inválida não mudam nada e o especialista repete a pergunta.
-Não recebe estado nem tools. Usado por Crédito (aguardando valor), Câmbio
-(aguardando moeda), Entrevista (consentimento e resposta inválida) e Triagem
-(confirmação de oferta pendente). Nunca é chamado para valor, moeda, tipo de
-emprego, `sim` ou `não`, e só pelo primeiro nó do turno.
+Saída estruturada (`LlmUnderstanding`): `intent`, `declines_current`, `amount`,
+`base_currency`, `quote_currency`, `monthly_income`, `employment_type`,
+`monthly_expenses`, `dependents`, `has_active_debts`, `knowledge_topic`,
+`clarification`. Nada é usado sem aterramento em `agents/understanding.py`:
+
+- `amount`, `monthly_income`, `monthly_expenses`: só se o número aparece no
+  texto do cliente, aceitando "8 mil" e "8k" como 8000; `dependents` aceita
+  dígito ou palavra de zero a dez;
+- `base_currency`/`quote_currency`: só moedas suportadas e distintas;
+- `knowledge_topic`: só chave existente no catálogo;
+- `clarification`: só sem dígito, até 240 caracteres, até três frases,
+  terminando em `?` e sem frase de vazamento; travessão é normalizado;
+- `intent`: só `credit_limit`, `limit_increase`, `credit_interview` e
+  `exchange_rate` diferentes do fluxo atual redirecionam; `help` reapresenta
+  os serviços; `information` leva ao Conhecimento apenas a partir da triagem;
+  `end_service` vale como recusa, porque encerrar continua exigindo pedido
+  explícito e determinístico.
+
+Usado por Crédito (aguardando valor), Câmbio (aguardando moeda), Entrevista
+(consentimento e resposta inválida; várias respostas podem ser preenchidas de
+uma vez, cada uma revalidada pelo serviço), Conhecimento (termos sem
+correspondência) e Triagem (intenção ambígua e confirmação de oferta). Nunca é
+chamado para valor, moeda, tipo de emprego, `sim` ou `não`, nem para texto que
+a triagem já roteou por parser. Uma chamada por turno, memorizada em
+`TurnContext` e reaproveitada pelos nós seguintes.
 
 ## 11. Carregamento e composição
 
@@ -332,9 +347,15 @@ Crédito, Entrevista e Câmbio usam o Groq para redigir o canônico protegido.
 
 Dentro de um fluxo, texto que não é resposta válida ao passo atual passa pelo
 parser de recusa e de pedido novo; se ele não reconhecer nada, o prompt
-`redirect` pede ao Groq a mesma classificação. Pedido novo entrega o turno ao
-especialista dele no mesmo turno; recusa descarta o passo e volta à triagem.
-Valor, moeda, tipo de emprego, `sim` e `não` nunca chegam a essa chamada.
+`understanding` pede ao Groq uma leitura completa do turno: recusa, pedido
+novo, valor, moeda, respostas da entrevista, tópico de dúvida e pergunta de
+esclarecimento. Pedido novo entrega o turno ao especialista dele no mesmo
+turno; recusa descarta o passo e volta à triagem; valor ou moeda aterrados no
+texto seguem para a tool; respostas da entrevista são revalidadas pelo
+serviço; esclarecimento aceito substitui a pergunta canônica. Valor, moeda,
+tipo de emprego, `sim` e `não` reconhecidos pelo parser nunca chegam a essa
+chamada. O Conhecimento insere fatos determinísticos do cliente (score e teto
+da faixa) no canônico, nunca na reescrita.
 
 Quando houver credencial, o modelo redige a resposta final completa a partir de
 duas entradas: o canônico com fatos mascarados (`[DADO_N]`) e a pergunta do
@@ -374,8 +395,11 @@ HISTORY_MAX_MESSAGES=6
 | Rota pós-autenticação ambígua | Uma classificação, com fallback determinístico |
 | Turno de Crédito, Entrevista ou Câmbio | Uma redação; até duas chamadas se a rota foi ambígua |
 | Recusa ou pedido novo reconhecido pelo parser | Zero chamada de classificação; redireciona no mesmo turno |
-| Texto inválido no passo atual, sem parser | Uma classificação `redirect`, com fallback de repetir a pergunta |
-| Valor, moeda, `sim` ou `não` no passo atual | Zero chamada `redirect` |
+| Texto inválido no passo atual, sem parser | Uma leitura `understanding`, com fallback de repetir a pergunta |
+| Valor, moeda, `sim` ou `não` no passo atual | Zero chamada `understanding` |
+| Valor, renda ou dependentes que não aparecem no texto | Descartados; pergunta canônica |
+| Esclarecimento com dígito ou sem `?` | Descartado; pergunta canônica |
+| Texto roteado pela triagem por parser | Zero leitura no especialista |
 | Redação com fato novo ou marcador perdido | Usa a resposta canônica |
 | Prompt global + especialista | Abaixo do limite de caracteres |
 | Especialista ativo | Somente suas tools e seu prompt são enviados |

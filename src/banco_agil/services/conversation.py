@@ -101,6 +101,7 @@ class ConversationService:
             "reply": "",
             "responding_agent": None,
             "step_count": 0,
+            "context": None,
         }
         try:
             result = cast(

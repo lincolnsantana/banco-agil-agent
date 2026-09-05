@@ -1,10 +1,13 @@
 """Testes da rota informativa e do catalogo explicativo."""
 
 import re
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from typing import TypeVar
 
 import pytest
+from pydantic import BaseModel
 
 from banco_agil.agents._shared import detects_information_question
 from banco_agil.agents.knowledge import handle_knowledge
@@ -17,6 +20,8 @@ from banco_agil.knowledge.catalog import (
     KnowledgeEntry,
 )
 from banco_agil.services.knowledge import KnowledgeRetriever, KnowledgeService
+
+_Model = TypeVar("_Model", bound=BaseModel)
 
 
 @pytest.fixture
@@ -222,3 +227,87 @@ class _FakeAuth:
         self, state: ConversationState, cpf: str, birth_date: str
     ) -> object:
         raise AssertionError("não deveria reautenticar")
+
+
+@dataclass
+class _RecordingLlm:
+    response: object
+    calls: int = 0
+
+    def calls_remaining(self, turn_id: str) -> int:
+        del turn_id
+        return 2 - self.calls
+
+    def invoke_structured(
+        self,
+        turn_id: str,
+        messages: object,
+        output_schema: type[_Model],
+        *,
+        prompt_version: str | None = None,
+    ) -> _Model:
+        del turn_id, messages, prompt_version
+        self.calls += 1
+        return output_schema.model_validate(self.response)
+
+
+@dataclass
+class _FixedScoreLimits:
+    maximum: Decimal
+
+    def find_max_limit(self, score: int) -> Decimal:
+        del score
+        return self.maximum
+
+
+def test_knowledge_uses_understood_topic_when_terms_do_not_match(
+    client: Client,
+) -> None:
+    state = ConversationState(authenticated_client=client, active_agent=Agent.KNOWLEDGE)
+    llm = _RecordingLlm({"intent": "information", "knowledge_topic": "why_rejected"})
+
+    reply = handle_knowledge(
+        state,
+        "não entendi o motivo daquela resposta negativa",
+        KnowledgeService(),
+        llm=llm,
+        turn_id="t",
+    )
+
+    assert "teto da sua faixa" in reply
+    assert state.pending_flow is Intent.CREDIT_INTERVIEW
+    assert llm.calls == 1
+
+
+def test_knowledge_grounds_the_rule_in_the_client_band(client: Client) -> None:
+    state = ConversationState(authenticated_client=client, active_agent=Agent.KNOWLEDGE)
+    service = KnowledgeService(score_limits=_FixedScoreLimits(Decimal("5000.00")))
+
+    reply = handle_knowledge(state, "por que meu aumento foi rejeitado?", service)
+
+    assert "Hoje seu score é 700 e sua faixa permite até R$ 5.000,00" in reply
+    assert reply.endswith("Quer tentar?")
+
+
+def test_knowledge_without_band_repository_only_states_the_score(
+    client: Client,
+) -> None:
+    state = ConversationState(authenticated_client=client, active_agent=Agent.KNOWLEDGE)
+
+    reply = handle_knowledge(state, "o que é score?", KnowledgeService())
+
+    assert "Seu score atual é 700." in reply
+    assert reply.endswith("?")
+
+
+def test_knowledge_admits_ignorance_when_topic_is_not_in_catalog(
+    client: Client,
+) -> None:
+    state = ConversationState(authenticated_client=client, active_agent=Agent.KNOWLEDGE)
+    llm = _RecordingLlm({"intent": "information", "knowledge_topic": "invented"})
+
+    reply = handle_knowledge(
+        state, "qual a cor do seu cartão?", KnowledgeService(), llm=llm, turn_id="t"
+    )
+
+    assert "não sei responder" in reply
