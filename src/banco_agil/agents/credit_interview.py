@@ -1,5 +1,7 @@
 """No deterministico da entrevista de credito."""
 
+import re
+
 from banco_agil.agents._shared import (
     authentication_reply_if_missing,
     end_reply_if_requested,
@@ -54,8 +56,16 @@ def handle_credit_interview(
     if authentication_reply is not None:
         return authentication_reply
 
+    if state.interview_draft.consent_given and _cancels_interview(user_text):
+        return _cancel_interview(state)
+
     if not state.interview_draft.consent_given:
         consent = _explicit_interview_consent(user_text)
+        if consent is None and _cancels_interview(user_text):
+            # Antes do consentimento a recusa passa pelo servico, que e quem
+            # detem o consentimento. Sem isto, com a intencao ja reconhecida
+            # pela triagem, um "cancelar" aqui iniciaria a coleta.
+            consent = False
         if consent is None and not _looks_like_interview_request(user_text):
             consent = parse_confirmation(user_text)
         if consent is None and state.intent is Intent.CREDIT_INTERVIEW:
@@ -77,14 +87,6 @@ def handle_credit_interview(
         return _INTERVIEW_OPENING
 
     current_field = _current_field(state)
-    if _abandons_interview(user_text):
-        # Consentimento informado precisa ser revogavel a qualquer momento.
-        state.interview_draft = CreditInterviewDraft()
-        state.requested_limit = None
-        state.credit_reanalysis_pending = False
-        state.intent = Intent.UNKNOWN
-        state.active_agent = Agent.TRIAGE
-        return _INTERVIEW_ABANDONED
     try:
         progress = service.collect_answer(state, user_text)
     except DomainError:
@@ -175,35 +177,82 @@ def _explicit_interview_consent(user_text: str) -> bool | None:
     return None
 
 
-_ABANDON_PHRASES = (
+# Palavras que pedem interrupcao. Nenhuma aparece numa resposta valida da
+# entrevista, que aceita numero, tipo de emprego ou sim/nao.
+_CANCEL_MARKERS = frozenset(
+    {
+        "cancelar",
+        "cancela",
+        "cancele",
+        "cancelo",
+        "cancelamento",
+        "parar",
+        "pare",
+        "chega",
+        "basta",
+        "esquece",
+        "esqueca",
+        "esquecer",
+        "desisto",
+        "desisti",
+        "desistir",
+        "interromper",
+        "interrompe",
+    }
+)
+_CANCEL_PHRASES = (
     "nao quero mais",
     "nao quero fazer",
     "nao quero continuar",
     "nao quero responder",
     "nao quero seguir",
+    "nao quero isso",
     "prefiro nao",
+    "melhor nao",
+    "agora nao",
     "deixa pra la",
     "deixa para la",
-    "quero parar",
-    "vamos parar",
-    "pode parar",
-    "para a entrevista",
-    "parar a entrevista",
-    "cancela a entrevista",
-    "cancelar a entrevista",
-    "desisto",
-    "desistir",
+    "deixa quieto",
+    "outra hora",
+    "mais tarde",
+    "depois eu faco",
 )
+# "para" sozinho pede parada; dentro de uma frase e preposicao comum.
+_CANCEL_ALONE = frozenset({"para", "para."})
+# Respostas validas de dividas ativas, que nunca podem ser lidas como recusa.
+_DEBT_ANSWERS = frozenset({"sim", "nao"})
 
 
-def _abandons_interview(user_text: str) -> bool:
-    """Detecta desistencia no meio da coleta, sem confundir com resposta.
+def _cancels_interview(user_text: str) -> bool:
+    """Detecta pedido de cancelamento em qualquer ponto da entrevista.
 
-    Um "nao" isolado responde a pergunta de dividas ativas, entao so frases
-    explicitas de recusa contam aqui.
+    Um "nao" isolado responde a pergunta de dividas ativas e jamais cancela.
+    Fora isso a deteccao pode ser generosa: os campos so aceitam numero, tipo
+    de emprego ou sim/nao, entao nenhuma palavra daqui colide com resposta
+    valida.
     """
     normalized = normalize_short_answer(user_text)
-    return any(phrase in normalized for phrase in _ABANDON_PHRASES)
+    if normalized in _DEBT_ANSWERS:
+        return False
+    if normalized in _CANCEL_ALONE:
+        return True
+    if any(phrase in normalized for phrase in _CANCEL_PHRASES):
+        return True
+    return bool(frozenset(re.findall(r"[a-z]+", normalized)) & _CANCEL_MARKERS)
+
+
+def _cancel_interview(state: ConversationState) -> str:
+    """Descarta o rascunho e devolve a conversa a triagem.
+
+    Consentimento informado precisa ser revogavel a qualquer momento, entao o
+    limite solicitado e a reanalise pendente caem junto com as respostas.
+    """
+    state.interview_draft = CreditInterviewDraft()
+    state.requested_limit = None
+    state.credit_reanalysis_pending = False
+    state.intent = Intent.UNKNOWN
+    state.active_agent = Agent.TRIAGE
+    return _INTERVIEW_ABANDONED
 
 
 def _looks_like_interview_request(user_text: str) -> bool:

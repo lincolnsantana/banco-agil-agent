@@ -171,9 +171,8 @@ Interface (dados fictícios: CPF `11144477735`, nascimento `20/05/1990`):
 streamlit run app.py
 ```
 
-A interface informa no topo se o Groq está ativo e qual modelo foi carregado.
-Sem `BANCO_AGIL_GROQ_API_KEY`, ela sinaliza **Modo determinístico**: nesse modo,
-nenhuma chamada ao provedor é realizada. Com Groq ativo, cada especialista cria
+Sem `BANCO_AGIL_GROQ_API_KEY`, a aplicação roda em **modo determinístico**: nesse
+modo, nenhuma chamada ao provedor é realizada. Com Groq ativo, cada especialista cria
 primeiro uma resposta canônica a partir das regras e tools em Python. O modelo
 gera a apresentação inicial e redige as respostas de Crédito, Entrevista e
 Câmbio a partir do canônico com fatos mascarados, sem alterar fatos, valores ou

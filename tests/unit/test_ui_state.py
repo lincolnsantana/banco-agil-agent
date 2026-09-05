@@ -24,7 +24,6 @@ from app import (  # noqa: E402
     greets_instead_of_replying,
     history_for_display,
     init_session,
-    llm_status_message,
     mask_sensitive_text,
     quick_actions,
     reset_conversation,
@@ -361,31 +360,6 @@ def test_build_service_without_key_supports_deterministic_turns(
     turn = service.handle_turn(state, (), "oi")
 
     assert "CPF" in turn.reply
-
-
-def test_llm_status_reports_deterministic_mode_without_key() -> None:
-    settings = Settings(_env_file=None, groq_api_key=None)
-
-    message = llm_status_message(settings)
-
-    assert "determinístico" in message
-    assert "BANCO_AGIL_GROQ_API_KEY" in message
-
-
-def test_llm_status_reports_configured_groq_model() -> None:
-    settings = Settings(
-        _env_file=None,
-        groq_api_key="test-key",
-        groq_model="test-model",
-    )
-
-    message = llm_status_message(settings)
-
-    assert "Groq ativo" in message
-    assert "boas-vindas" in message
-    assert "especialistas" in message
-    assert "test-model" in message
-    assert "test-key" not in message
 
 
 def test_build_service_uses_fictitious_client_csv(tmp_path: Path) -> None:

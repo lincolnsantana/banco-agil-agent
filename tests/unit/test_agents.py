@@ -173,10 +173,11 @@ class FakeInterviewService:
         state: ConversationState,
         consent: bool,
     ) -> InterviewProgress:
-        """Registra o consentimento."""
+        """Registra o consentimento, recusando como o servico real recusa."""
         self.starts.append(consent)
-        if consent:
-            state.interview_draft = CreditInterviewDraft(consent_given=True)
+        if not consent:
+            return InterviewProgress(next_field=None, consent_declined=True)
+        state.interview_draft = CreditInterviewDraft(consent_given=True)
         return self.progress
 
     def collect_answer(
@@ -1101,10 +1102,22 @@ def test_interview_starts_when_triage_already_recognized_the_request(
 @pytest.mark.parametrize(
     "refusal",
     (
-        "não quero mais",
+        "cancelar",
+        "cancela",
+        "quero cancelar",
+        "cancelar entrevista",
+        "pare",
+        "para",
+        "chega",
+        "esquece",
         "desisto",
+        "não quero mais",
         "prefiro não responder isso",
         "pode parar a entrevista",
+        "melhor não",
+        "agora não",
+        "deixa quieto",
+        "mais tarde",
     ),
 )
 def test_interview_abandoned_midway_discards_everything(
@@ -1618,3 +1631,100 @@ def test_end_parser_does_not_stop_an_unfinished_credit_request(client: Client) -
 
     assert not state.ended
     assert "limite total" in reply.casefold()
+
+
+@pytest.mark.parametrize(
+    "campo",
+    (
+        InterviewField.MONTHLY_INCOME,
+        InterviewField.EMPLOYMENT_TYPE,
+        InterviewField.MONTHLY_EXPENSES,
+        InterviewField.DEPENDENTS,
+        InterviewField.ACTIVE_DEBTS,
+    ),
+)
+def test_interview_can_be_cancelled_at_any_field(
+    client: Client,
+    campo: InterviewField,
+) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT_INTERVIEW,
+        intent=Intent.CREDIT_INTERVIEW,
+        interview_draft=CreditInterviewDraft(consent_given=True),
+    )
+    service = FakeInterviewService(InterviewProgress(next_field=campo))
+
+    reply = handle_credit_interview(state, "cancelar", service)
+
+    assert "não guardei nada" in reply
+    assert service.answers == []
+    assert state.active_agent is Agent.TRIAGE
+
+
+def test_cancel_before_consent_does_not_start_the_interview(
+    client: Client,
+) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT_INTERVIEW,
+        intent=Intent.CREDIT_INTERVIEW,
+    )
+    service = FakeInterviewService(
+        InterviewProgress(next_field=InterviewField.MONTHLY_INCOME)
+    )
+
+    reply = handle_credit_interview(state, "cancelar", service)
+
+    # Sem esta guarda, a intencao reconhecida pela triagem daria consentimento.
+    assert service.starts == [False]
+    assert "tudo bem" in reply.casefold()
+    assert state.interview_draft.consent_given is False
+
+
+@pytest.mark.parametrize("answer", ("sim", "não", "nao", "Não."))
+def test_debt_answers_are_never_read_as_cancellation(
+    client: Client,
+    answer: str,
+) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT_INTERVIEW,
+        interview_draft=CreditInterviewDraft(
+            consent_given=True,
+            monthly_income=Decimal("5000.00"),
+            employment_type=EmploymentType.FORMAL,
+            monthly_expenses=Decimal("1000.00"),
+        ),
+    )
+    service = FakeInterviewService(
+        InterviewProgress(next_field=InterviewField.ACTIVE_DEBTS)
+    )
+
+    handle_credit_interview(state, answer, service)
+
+    # Responder dividas ativas nunca pode cancelar a entrevista.
+    assert service.answers == [answer]
+    assert state.active_agent is Agent.CREDIT_INTERVIEW
+
+
+def test_ending_the_service_midway_discards_the_draft(client: Client) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT_INTERVIEW,
+        interview_draft=CreditInterviewDraft(
+            consent_given=True, monthly_income=Decimal("5000.00")
+        ),
+        requested_limit=Decimal("9000.00"),
+    )
+    service = FakeInterviewService(
+        InterviewProgress(next_field=InterviewField.EMPLOYMENT_TYPE)
+    )
+
+    handle_credit_interview(state, "encerrar", service)
+
+    # Encerrar no meio da coleta tambem retira o consentimento.
+    assert state.ended is True
+    assert state.interview_draft.monthly_income is None
+    assert state.interview_draft.consent_given is False
+    assert state.requested_limit is None

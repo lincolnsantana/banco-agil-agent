@@ -116,9 +116,12 @@ body,
     font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
+/* O header do Streamlit e absolute em top 0 com 3.75rem de altura, e o proprio
+   framework reserva 6rem de topo por causa disso. Reduzir esse espaco joga o
+   conteudo por baixo do header. */
 [data-testid="stMainBlockContainer"] {
     max-width: 880px;
-    padding-top: 1.25rem;
+    padding-top: 6rem;
     padding-bottom: 7rem;
 }
 
@@ -320,12 +323,6 @@ body,
     animation: agil-view-in 460ms var(--agil-ease) both;
 }
 
-.st-key-restart_chat button {
-    border-radius: var(--agil-control-radius) !important;
-    font-size: 0.8rem;
-    font-weight: 500;
-}
-
 @keyframes agil-view-in {
     from {
         opacity: 0;
@@ -359,7 +356,8 @@ body,
 
 @media (max-width: 640px) {
     [data-testid="stMainBlockContainer"] {
-        padding: 0.75rem 0.8rem 6.5rem;
+        /* O header tem a mesma altura no celular: o topo continua reservado. */
+        padding: 4.5rem 0.8rem 6.5rem;
     }
 
     .chat-bubble {
@@ -405,13 +403,15 @@ _LANDING_EXIT_STYLE = """
 """
 
 _LANDING_HERO = (
-    '<header class="landing-hero">'🏦
-    '<h1 class="landing-hero__brand">Banco Ágil: Atendimento Digital</h1>'
-    '<p class="landing-hero__subtitle">'
+    '<div class="landing-hero">'
+    '<div class="landing-hero__brand" role="heading" aria-level="1">'
+    "🏦 Banco Ágil: Atendimento Digital"
+    "</div>"
+    '<div class="landing-hero__subtitle">'
     "Consulte seu limite, peça aumento, faça sua análise e acompanhe "
     "cotações de moedas."
-    "</p>"
-    "</header>"
+    "</div>"
+    "</div>"
 )
 
 _TYPING_INDICATOR = """
@@ -594,18 +594,6 @@ def _build_conversation_service(
     return ConversationService(build_graph(dependencies))
 
 
-def llm_status_message(settings: Settings) -> str:
-    """Descreve o modo conversacional sem expor a credencial configurada."""
-    api_key = settings.groq_api_key
-    if api_key is not None and api_key.get_secret_value().strip():
-        model = settings.groq_model
-        return f"Groq ativo nas boas-vindas e nos especialistas — modelo {model}."
-    return (
-        "Modo determinístico: Groq inativo. Configure "
-        "BANCO_AGIL_GROQ_API_KEY no arquivo .env e reinicie a aplicação."
-    )
-
-
 def greets_instead_of_replying(state: ConversationState) -> bool:
     """Indica se a saudacao substitui a resposta da primeira troca.
 
@@ -764,28 +752,13 @@ def _process_message(
 
 def _render_chat(
     session: MutableMapping[str, object],
-    settings: Settings,
     service: ConversationServiceLike,
-    llm: GroqStructuredLlm | None,
 ) -> None:
     """Mostra o histórico, processa a entrada e oferece novo atendimento."""
     user_input = st.chat_input("Digite sua mensagem")
     with st.container(key="chat_view"):
-        # Sem cabeçalho aqui: a marca vive na tela inicial.
-        _, restart_column = st.columns([5, 2], gap="small")
-        with restart_column, st.container(key="restart_chat"):
-            restart = st.button(
-                "Novo atendimento",
-                key="restart_chat_button",
-                icon="🔄",
-                use_container_width=True,
-                help="Volta para a tela inicial e começa outro atendimento.",
-            )
-        if restart:
-            reset_conversation(session, generate_welcome_message(llm))
-            st.rerun()
-
-        st.caption(llm_status_message(settings))
+        # Sem cabeçalho nem controles aqui: a marca vive na tela inicial e o
+        # chat abre direto na conversa.
         history = cast(Sequence[BaseMessage], session[_HISTORY_KEY])
         for role, safe_text in history_for_display(history):
             render_chat_message(role, safe_text)
@@ -811,7 +784,6 @@ def main() -> None:
     """Escolhe entre a tela inicial e o chat conforme o estado da sessão."""
     st.set_page_config(page_title="Banco Ágil - Atendimento", page_icon="🏦")
     st.markdown(_UI_STYLES, unsafe_allow_html=True)
-    settings = Settings()
     session = cast(MutableMapping[str, object], st.session_state)
     service, llm = _get_runtime()
     if _HISTORY_KEY not in session:
@@ -822,7 +794,7 @@ def main() -> None:
     if current_view(session) == LANDING_VIEW:
         _render_landing(session)
         return
-    _render_chat(session, settings, service, llm)
+    _render_chat(session, service)
 
 
 if __name__ == "__main__" and st.runtime.exists():

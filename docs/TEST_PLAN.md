@@ -14,15 +14,17 @@ Cobertura automatizada correspondente em `tests/e2e/test_journeys.py`.
 ## CT00 — Abertura da interface
 
 1. Inicie `streamlit run app.py`.
-2. Na tela inicial, confirme que aparecem apenas a pergunta centralizada, o campo
-   de mensagem e os quatro atalhos (Visualizar limite, Aumento de crédito,
-   Atualizar score, Cotação de moedas) — sem cabeçalho do banco e sem o aviso de
-   modo do Groq, que ficam só no chat. Confira o campo e os atalhos arredondados
-   com borda de contraste. Clique em um atalho e verifique que o texto entra no
-   chat como mensagem do cliente, com transição animada; o campo central também
-   aceita texto livre.
-3. Confirme o cabeçalho simples `🏦 Banco Ágil`, a tipografia Inter e o fundo
-   branco no tema claro, sem sobrepor o header nativo do Streamlit.
+2. Na tela inicial, confirme a marca `🏦 Banco Ágil: Atendimento Digital`, o
+   subtítulo centralizado, o campo de mensagem e os quatro atalhos (Visualizar
+   limite, Aumento de crédito, Atualizar score, Cotação de moedas), todos
+   arredondados. Clique em um atalho e verifique que o texto entra no chat como
+   mensagem do cliente, com transição animada; o campo central também aceita
+   texto livre.
+3. No chat, confirme que **não** há cabeçalho do banco nem aviso de modo do Groq:
+   a marca vive só na tela inicial e o status do provedor não é mais exibido.
+   Confira a tipografia Inter e o fundo branco no tema claro. Role até o topo
+   nas duas telas e confirme que nenhum conteúdo passa por baixo da barra
+   nativa do Streamlit.
 4. Confirme que o chat abre sem nenhuma fala previa: a primeira bolha é a do
    cliente, e a saudação vem como resposta a ela.
 5. Envie uma mensagem e confira os balões internos azul/ardósia com texto branco,
@@ -34,14 +36,15 @@ Cobertura automatizada correspondente em `tests/e2e/test_journeys.py`.
 7. Clique no campo de mensagem e confirme o contorno azul, sem borda vermelha.
 8. Envie uma mensagem e confira `🏦` com três pontos animados enquanto aguarda,
    sem círculo de carregamento ou texto `Digitando...`.
-9. Clique em **Novo atendimento** e confirme o retorno à tela inicial.
+9. Confirme que o chat não tem botão nem barra lateral: só a conversa e o
+   campo de mensagem. Para recomeçar, recarregue a página.
 
 Resultado esperado: a mensagem do cliente abre a conversa e o assistente
 responde se apresentando — informa que atende limite, aumento, entrevista de
-crédito e câmbio, explica que a autenticação vem primeiro e já solicita o CPF. Os botões existem apenas na tela inicial, como atalhos que
-viram mensagem do cliente; dentro do chat tudo acontece na conversa, com o botão
-**Novo atendimento** voltando para a tela inicial. Barra, balões, avatares e campo
-de mensagem permanecem legíveis nos dois tamanhos de tela.
+crédito e câmbio, explica que a autenticação vem primeiro e já solicita o CPF.
+Os atalhos existem apenas na tela inicial e viram mensagem do cliente; dentro do
+chat tudo acontece na conversa, sem controles na tela. Barra, balões, avatares e campo de
+mensagem permanecem legíveis nos dois tamanhos de tela.
 
 ## CT01 — Autenticação e consulta de limite
 
@@ -87,6 +90,22 @@ Resultado esperado: rejeição com oferta de entrevista (sem promessa de aprova�
 uma pergunta por vez; após a última resposta, score atualizado para 1000 e nova
 análise aprovada na mesma resposta. CSVs: primeira linha `rejeitado`, segunda
 `aprovado`; `clientes.csv` com o novo score.
+
+## CT11 — Cancelamento da entrevista
+
+1. Autentique-se, envie `quero atualizar meu score` e responda apenas a renda.
+2. Envie `cancelar`.
+3. Repita a partir do passo 1 cancelando em cada etapa: antes de responder a
+   renda, e depois de emprego, despesas e dependentes.
+4. Numa entrevista nova, na pergunta de dívidas ativas, responda `não`.
+5. Numa entrevista nova, responda a renda e envie `encerrar`.
+
+Resultado esperado: nos passos 2 e 3 o atendimento confirma que a entrevista
+parou e que nada foi guardado, em qualquer etapa. Variações como `cancela`,
+`pare`, `chega`, `esquece`, `desisto`, `agora não` e `mais tarde` têm o mesmo
+efeito. No passo 4 o `não` é lido como resposta de dívidas e a entrevista
+continua: cancelar aí é falha. No passo 5 o atendimento encerra e as respostas
+parciais são descartadas junto.
 
 ## CT04 — Câmbio e indisponibilidade
 

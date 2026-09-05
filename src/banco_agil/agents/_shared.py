@@ -8,7 +8,7 @@ from decimal import Decimal
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from pydantic import BaseModel, Field
 
-from banco_agil.agents.state import ConversationState
+from banco_agil.agents.state import ConversationState, CreditInterviewDraft
 from banco_agil.domain.enums import Agent, EndReason, Intent
 from banco_agil.domain.exceptions import IntegrationError
 from banco_agil.domain.models import EndServiceResult
@@ -562,8 +562,16 @@ def end_reply_if_requested(state: ConversationState, user_text: str) -> str | No
 
 
 def end_conversation(state: ConversationState, reason: EndReason) -> None:
-    """Executa a tool de encerramento e aplica seu resultado ao estado."""
+    """Executa a tool de encerramento e aplica seu resultado ao estado.
+
+    Descarta tambem a entrevista em andamento: quem pede para encerrar no meio
+    da coleta esta retirando o consentimento, e renda, despesas e dividas
+    parciais nao podem sobreviver ao pedido.
+    """
     result = EndServiceResult.model_validate(end_service.invoke({"reason": reason}))
+    state.interview_draft = CreditInterviewDraft()
+    state.requested_limit = None
+    state.credit_reanalysis_pending = False
     state.end(result.reason)
 
 
