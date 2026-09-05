@@ -26,17 +26,21 @@ from app import (  # noqa: E402
     init_session,
     mask_sensitive_text,
     quick_actions,
+    remember_suggestions,
     reset_conversation,
+    return_to_landing,
     start_chat,
+    stored_suggestions,
     stored_welcome,
     submit_user_message,
+    suggestions_for,
     take_pending_message,
     typing_indicator_html,
 )
 from banco_agil.agents.state import ConversationState  # noqa: E402
 from banco_agil.agents.triage import handle_triage  # noqa: E402
 from banco_agil.config import Settings  # noqa: E402
-from banco_agil.domain.enums import Agent, Intent  # noqa: E402
+from banco_agil.domain.enums import Agent, EndReason, Intent  # noqa: E402
 from banco_agil.domain.models import Client  # noqa: E402
 from banco_agil.services.conversation import ConversationTurn  # noqa: E402
 from banco_agil.services.welcome import DEFAULT_WELCOME_MESSAGE  # noqa: E402
@@ -50,6 +54,7 @@ class FakeConversationService:
     calls: list[str]
     fail_with: BaseException | None = None
     pending_cpf: str | None = None
+    responding_agent: Agent | None = None
 
     def handle_turn(
         self,
@@ -66,7 +71,12 @@ class FakeConversationService:
             state.pending_cpf = self.pending_cpf
         reply = self.replies.pop(0) if self.replies else "resposta"
         updated_history = (HumanMessage(content=user_text), AIMessage(content=reply))
-        return ConversationTurn(state=state, history=updated_history, reply=reply)
+        return ConversationTurn(
+            state=state,
+            history=updated_history,
+            reply=reply,
+            responding_agent=self.responding_agent,
+        )
 
 
 def test_init_session_preserves_existing_conversation() -> None:
@@ -506,3 +516,188 @@ def test_quick_action_prompt_routes_without_llm(
     assert state.intent is expected_intent
     assert state.active_agent is expected_agent
     assert state.pending_flow is None
+
+
+def _finished_service_state() -> ConversationState:
+    """Estado de um servico concluido: autenticado e sem passo em andamento."""
+    return ConversationState(authenticated_client=_authenticated_client())
+
+
+@pytest.mark.parametrize(
+    "responding_agent",
+    (
+        Agent.TRIAGE,
+        Agent.CREDIT,
+        Agent.CREDIT_INTERVIEW,
+        Agent.EXCHANGE,
+        Agent.KNOWLEDGE,
+    ),
+)
+def test_finished_service_offers_three_questions_for_each_agent(
+    responding_agent: Agent,
+) -> None:
+    suggestions = suggestions_for(_finished_service_state(), responding_agent)
+
+    assert len(suggestions) == 3
+    assert all(isinstance(item, QuickAction) for item in suggestions)
+    assert all(item.label.strip() and item.prompt.strip() for item in suggestions)
+    assert len({item.key for item in suggestions}) == 3
+
+
+def test_suggestions_fall_back_to_triage_without_responding_agent() -> None:
+    assert suggestions_for(_finished_service_state(), None) == suggestions_for(
+        _finished_service_state(), Agent.TRIAGE
+    )
+
+
+def test_specialist_holding_the_turn_offers_no_questions() -> None:
+    # O credito ainda espera o valor do aumento: sugerir outro assunto agora
+    # atrapalharia a coleta.
+    state = ConversationState(
+        authenticated_client=_authenticated_client(),
+        active_agent=Agent.CREDIT,
+        intent=Intent.LIMIT_INCREASE,
+    )
+
+    assert suggestions_for(state, Agent.CREDIT) == ()
+
+
+def test_pending_offer_awaiting_yes_or_no_offers_no_questions() -> None:
+    state = ConversationState(
+        authenticated_client=_authenticated_client(),
+        pending_flow=Intent.CREDIT_INTERVIEW,
+    )
+
+    assert suggestions_for(state, Agent.KNOWLEDGE) == ()
+
+
+def test_unauthenticated_or_ended_conversation_offers_no_questions() -> None:
+    ended = ConversationState(authenticated_client=_authenticated_client())
+    ended.end(EndReason.USER_REQUEST)
+
+    assert suggestions_for(ConversationState(), Agent.TRIAGE) == ()
+    assert suggestions_for(ended, Agent.TRIAGE) == ()
+
+
+def test_turn_stores_the_questions_of_the_agent_that_answered() -> None:
+    session: dict[str, object] = {}
+    init_session(session)
+    session["conversation"] = _finished_service_state()
+    service = FakeConversationService(
+        replies=["Seu limite atual é R$ 2.500,00."],
+        calls=[],
+        responding_agent=Agent.CREDIT,
+    )
+
+    submit_user_message(
+        session, cast(app.ConversationServiceLike, service), "qual meu limite?"
+    )
+
+    assert stored_suggestions(session) == suggestions_for(
+        _finished_service_state(), Agent.CREDIT
+    )
+
+
+def test_failed_turn_leaves_no_questions_behind() -> None:
+    session: dict[str, object] = {}
+    init_session(session)
+    session["conversation"] = _finished_service_state()
+    remember_suggestions(
+        session, suggestions_for(_finished_service_state(), Agent.TRIAGE)
+    )
+    service = FakeConversationService(
+        replies=[], calls=[], fail_with=RuntimeError("indisponivel")
+    )
+
+    submit_user_message(
+        session, cast(app.ConversationServiceLike, service), "qual meu limite?"
+    )
+
+    assert stored_suggestions(session) == ()
+
+
+def test_stored_suggestions_ignores_unexpected_value() -> None:
+    assert stored_suggestions({"suggestions": "credito"}) == ()
+
+
+@pytest.mark.parametrize(
+    ("suggestion_key", "expected_intent", "expected_agent"),
+    (
+        ("credit_limit", Intent.CREDIT_LIMIT, Agent.CREDIT),
+        ("limit_increase", Intent.LIMIT_INCREASE, Agent.CREDIT),
+        ("credit_interview", Intent.CREDIT_INTERVIEW, Agent.CREDIT_INTERVIEW),
+        ("exchange_dollar", Intent.EXCHANGE_RATE, Agent.EXCHANGE),
+        ("exchange_euro", Intent.EXCHANGE_RATE, Agent.EXCHANGE),
+        ("score_rule", Intent.INFORMATION, Agent.KNOWLEDGE),
+        ("quote_source", Intent.INFORMATION, Agent.KNOWLEDGE),
+    ),
+)
+def test_suggestion_prompt_routes_without_llm(
+    suggestion_key: str,
+    expected_intent: Intent,
+    expected_agent: Agent,
+) -> None:
+    suggestion = next(
+        item
+        for group in app._AGENT_SUGGESTIONS.values()
+        for item in group
+        if item.key == suggestion_key
+    )
+    state = ConversationState(authenticated_client=_authenticated_client())
+
+    reply = handle_triage(
+        state,
+        suggestion.prompt,
+        UnusedAuthenticationService(),
+        llm=None,
+        turn_id="suggestion-turn",
+    )
+
+    assert reply
+    assert state.intent is expected_intent
+    assert state.active_agent is expected_agent
+
+
+def test_stored_suggestions_survive_a_rerun_of_the_script() -> None:
+    """O rerun redefine `QuickAction`; a sessao guarda chave, nao objeto."""
+    session: dict[str, object] = {}
+    init_session(session)
+    suggestions = suggestions_for(_finished_service_state(), Agent.EXCHANGE)
+
+    remember_suggestions(session, suggestions)
+
+    assert all(isinstance(item, str) for item in cast(tuple, session["suggestions"]))
+    assert stored_suggestions(session) == suggestions
+
+
+def test_chat_placeholder_invites_writing_next_to_the_suggestions() -> None:
+    session: dict[str, object] = {}
+    init_session(session)
+
+    assert app._chat_placeholder(session) == "Digite sua mensagem"
+
+    remember_suggestions(
+        session, suggestions_for(_finished_service_state(), Agent.TRIAGE)
+    )
+
+    assert app._chat_placeholder(session) == "Ou pergunte outra coisa..."
+
+
+def test_back_to_landing_keeps_the_conversation_alive() -> None:
+    session: dict[str, object] = {}
+    init_session(session)
+    session["conversation"] = _finished_service_state()
+    session["history"] = [HumanMessage(content="oi"), AIMessage(content="olá")]
+    remember_suggestions(
+        session, suggestions_for(_finished_service_state(), Agent.TRIAGE)
+    )
+    start_chat(session, "qual meu limite?")
+
+    return_to_landing(session)
+
+    assert current_view(session) == LANDING_VIEW
+    # A mensagem agendada nao pode disparar sozinha depois da volta.
+    assert take_pending_message(session) is None
+    assert stored_suggestions(session) == ()
+    assert len(cast(list[BaseMessage], session["history"])) == 2
+    assert cast(ConversationState, session["conversation"]).authenticated

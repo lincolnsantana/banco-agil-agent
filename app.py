@@ -13,6 +13,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from banco_agil.agents.graph import GraphDependencies, build_graph
 from banco_agil.agents.state import ConversationState
 from banco_agil.config import Settings
+from banco_agil.domain.enums import Agent
 from banco_agil.domain.exceptions import DomainError
 from banco_agil.integrations.awesomeapi import AwesomeApiClient
 from banco_agil.integrations.llm import GroqStructuredLlm
@@ -36,6 +37,7 @@ _NOTICE_KEY = "notice"
 _WELCOME_KEY = "welcome_message"
 _VIEW_KEY = "view"
 _PENDING_KEY = "pending_message"
+_SUGGESTIONS_KEY = "suggestions"
 
 LANDING_VIEW = "landing"
 CHAT_VIEW = "chat"
@@ -43,6 +45,7 @@ CHAT_VIEW = "chat"
 # Tempo da animacao de saida da tela inicial antes de trocar para o chat.
 _TRANSITION_SECONDS = 0.28
 _QUICK_ACTION_COLUMNS = 4
+_SUGGESTION_ROWS = 3
 
 _CHAT_AVATARS = {"assistant": "🏦", "user": "👤"}
 
@@ -86,6 +89,87 @@ _QUICK_ACTIONS = (
     ),
 )
 
+# Perguntas rapidas oferecidas dentro do chat quando um especialista conclui o
+# atendimento. Cada trio continua a conversa pelo assunto vizinho ao que acabou
+# de ser respondido, e os textos usam os mesmos termos que a triagem reconhece
+# sem LLM, para o clique chegar ao especialista certo.
+_SUGGESTION_LIMIT = QuickAction(
+    key="credit_limit",
+    label="Ver meu limite",
+    icon="💳",
+    prompt="Quero visualizar meu limite de crédito.",
+)
+_SUGGESTION_INCREASE = QuickAction(
+    key="limit_increase",
+    label="Pedir aumento",
+    icon="📈",
+    prompt="Quero solicitar um aumento do meu limite de crédito.",
+)
+_SUGGESTION_INTERVIEW = QuickAction(
+    key="credit_interview",
+    label="Atualizar meu score",
+    icon="📝",
+    prompt="Quero fazer a entrevista de crédito para atualizar meu limite.",
+)
+_SUGGESTION_DOLLAR = QuickAction(
+    key="exchange_dollar",
+    label="Cotação do dólar",
+    icon="💱",
+    prompt="Quero ver a cotação do dólar.",
+)
+_SUGGESTION_EURO = QuickAction(
+    key="exchange_euro",
+    label="Cotação do euro",
+    icon="💶",
+    prompt="Quero ver a cotação do euro.",
+)
+_SUGGESTION_SCORE_RULE = QuickAction(
+    key="score_rule",
+    label="Como é calculado o score?",
+    icon="❓",
+    prompt="Como é calculado o meu score?",
+)
+_SUGGESTION_QUOTE_SOURCE = QuickAction(
+    key="quote_source",
+    label="De onde vem a cotação?",
+    icon="❓",
+    prompt="De onde vem a cotação que vocês mostram?",
+)
+
+_AGENT_SUGGESTIONS: dict[Agent, tuple[QuickAction, ...]] = {
+    Agent.TRIAGE: (
+        _SUGGESTION_LIMIT,
+        _SUGGESTION_INCREASE,
+        _SUGGESTION_DOLLAR,
+    ),
+    Agent.CREDIT: (
+        _SUGGESTION_INCREASE,
+        _SUGGESTION_INTERVIEW,
+        _SUGGESTION_DOLLAR,
+    ),
+    Agent.CREDIT_INTERVIEW: (
+        _SUGGESTION_LIMIT,
+        _SUGGESTION_INCREASE,
+        _SUGGESTION_SCORE_RULE,
+    ),
+    Agent.EXCHANGE: (
+        _SUGGESTION_EURO,
+        _SUGGESTION_QUOTE_SOURCE,
+        _SUGGESTION_LIMIT,
+    ),
+    Agent.KNOWLEDGE: (
+        _SUGGESTION_LIMIT,
+        _SUGGESTION_INTERVIEW,
+        _SUGGESTION_DOLLAR,
+    ),
+}
+
+_SUGGESTION_BY_KEY = {
+    suggestion.key: suggestion
+    for group in _AGENT_SUGGESTIONS.values()
+    for suggestion in group
+}
+
 _UI_STYLES = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
@@ -122,7 +206,7 @@ body,
    conteudo por baixo do header. */
 [data-testid="stMainBlockContainer"] {
     max-width: 880px;
-    padding-top: 6rem;
+    padding-top: 6.5rem;
     padding-bottom: 7rem;
 }
 
@@ -324,6 +408,147 @@ body,
     animation: agil-view-in 460ms var(--agil-ease) both;
 }
 
+/* Fica logo abaixo do header do Streamlit (3.75rem) e na borda esquerda da
+   coluna da conversa, acompanhando-a ate a tela estreitar. Preso na viewport:
+   voltar continua a um clique depois de rolar a conversa. */
+.st-key-back_to_landing {
+    position: fixed;
+    top: 4.35rem;
+    left: max(1rem, calc(50% - 440px));
+    z-index: 20;
+    width: auto;
+    animation: agil-view-in 460ms var(--agil-ease) both;
+}
+
+.st-key-back_to_landing button {
+    min-height: 32px;
+    padding: 0 0.85rem;
+    border: 1px solid var(--agil-border) !important;
+    border-radius: var(--agil-control-radius) !important;
+    backdrop-filter: blur(8px);
+    background: var(--agil-control-fill) !important;
+    color: inherit;
+    font-size: 0.8rem;
+    font-weight: 500;
+    transition: background 160ms ease;
+}
+
+.st-key-back_to_landing button:hover {
+    background: var(--agil-control-fill-hover) !important;
+}
+
+.st-key-back_to_landing button:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--agil-accent) 55%, transparent);
+}
+
+/* O painel de perguntas rapidas fica ancorado na barra inferior, logo acima do
+   campo de texto, e acompanha a largura da conversa. */
+[data-testid="stBottomBlockContainer"] {
+    max-width: 880px;
+    margin: 0 auto;
+}
+
+.st-key-chat_suggestions {
+    overflow: hidden;
+    margin-bottom: 0.6rem;
+    border: 1px solid var(--agil-border);
+    border-radius: 18px;
+    background: var(--agil-tint);
+    box-shadow: 0 10px 30px var(--agil-shadow);
+    animation: agil-rise 420ms var(--agil-ease) both;
+}
+
+/* O Streamlit separa blocos e colunas com gap de 1rem e ainda folga os
+   containers de elemento. Dentro do cartao esse respiro vira espaco morto
+   acima do titulo e da primeira opcao, entao ele e zerado aqui. */
+.st-key-chat_suggestions,
+.st-key-chat_suggestions [data-testid="stVerticalBlock"],
+.st-key-chat_suggestions [data-testid="stHorizontalBlock"],
+.st-key-chat_suggestions [data-testid="stColumn"] {
+    gap: 0 !important;
+}
+
+.st-key-chat_suggestions [data-testid="stElementContainer"],
+.st-key-chat_suggestions [data-testid="stMarkdown"],
+.st-key-chat_suggestions [data-testid="stMarkdownContainer"] {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.st-key-chat_suggestions_header {
+    padding: 0.5rem 0.35rem 0.5rem 1rem;
+    border-bottom: 1px solid var(--agil-border);
+}
+
+.suggestions-title {
+    color: var(--agil-muted);
+    font-size: 0.84rem;
+    font-weight: 500;
+    line-height: 1.5;
+}
+
+/* A numeracao vem do CSS para o rotulo do botao continuar sendo so a pergunta,
+   que e o texto enviado ao atendimento. */
+.st-key-chat_suggestion_rows {
+    counter-reset: agil-suggestion;
+    gap: 0 !important;
+}
+
+.st-key-chat_suggestion_rows
+[data-testid="stElementContainer"]:not(:first-child) button {
+    border-top: 1px solid var(--agil-border) !important;
+}
+
+.st-key-chat_suggestion_rows button {
+    justify-content: flex-start !important;
+    min-height: 46px;
+    padding: 0 1rem;
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    color: inherit;
+    font-size: 0.9rem;
+    font-weight: 400;
+    text-align: left;
+    transition: background 160ms ease;
+}
+
+.st-key-chat_suggestion_rows button::before {
+    display: grid;
+    flex: 0 0 24px;
+    width: 24px;
+    height: 24px;
+    margin-right: 0.75rem;
+    place-items: center;
+    border-radius: 7px;
+    background: var(--agil-control-fill);
+    color: var(--agil-muted);
+    content: counter(agil-suggestion);
+    counter-increment: agil-suggestion;
+    font-size: 0.75rem;
+}
+
+.st-key-chat_suggestion_rows button:hover,
+.st-key-chat_suggestion_rows button:focus-visible {
+    outline: none;
+    background: var(--agil-control-fill) !important;
+}
+
+.st-key-chat_suggestions_dismiss button {
+    min-height: 34px;
+    padding: 0;
+    border: none !important;
+    background: transparent !important;
+    color: var(--agil-muted);
+    font-size: 0.95rem;
+}
+
+.st-key-chat_suggestions_dismiss button:hover {
+    background: var(--agil-control-fill) !important;
+    color: inherit;
+}
+
 @keyframes agil-view-in {
     from {
         opacity: 0;
@@ -378,12 +603,23 @@ body,
     .st-key-quick_actions button {
         font-size: 0.8rem;
     }
+
+    .st-key-chat_suggestion_rows button {
+        font-size: 0.84rem;
+    }
+
+    .st-key-back_to_landing {
+        top: 4.2rem;
+        left: 0.8rem;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
     .st-key-landing,
     .st-key-landing_input,
     .st-key-quick_actions,
+    .st-key-chat_suggestions,
+    .st-key-back_to_landing,
     .st-key-chat_view,
     .landing-hero,
     .typing-indicator__dot {
@@ -409,7 +645,7 @@ _LANDING_HERO = (
     "🏦 Banco Ágil: Atendimento Digital"
     "</div>"
     '<div class="landing-hero__subtitle">'
-    "Consulte seu limite, peça aumento, faça sua análise e acompanhe "
+    "Consulte seu limite, peça aumento, análise de crédito e acompanhe "
     "cotações de moedas."
     "</div>"
     "</div>"
@@ -460,6 +696,8 @@ def init_session(
         session[_NOTICE_KEY] = None
     if _VIEW_KEY not in session:
         session[_VIEW_KEY] = LANDING_VIEW
+    if _SUGGESTIONS_KEY not in session:
+        session[_SUGGESTIONS_KEY] = ()
 
 
 def reset_conversation(
@@ -472,6 +710,7 @@ def reset_conversation(
     session[_WELCOME_KEY] = welcome_message
     session[_NOTICE_KEY] = None
     session[_VIEW_KEY] = LANDING_VIEW
+    session[_SUGGESTIONS_KEY] = ()
     session.pop(_PENDING_KEY, None)
 
 
@@ -489,6 +728,53 @@ def quick_actions() -> tuple[QuickAction, ...]:
     return _QUICK_ACTIONS
 
 
+def suggestions_for(
+    state: ConversationState,
+    responding_agent: Agent | None,
+) -> tuple[QuickAction, ...]:
+    """Escolhe as perguntas rapidas do especialista que acabou de responder.
+
+    So devolve atalhos quando o servico terminou: a conversa segue viva, o
+    cliente esta autenticado, nenhum especialista guarda o turno (`active_agent`
+    voltou a triagem) e nao ha oferta pendente esperando sim ou nao. Enquanto o
+    passo atual espera um dado - CPF, valor do limite, resposta da entrevista ou
+    moeda - sugerir outro assunto atrapalharia a coleta.
+    """
+    if state.ended or not state.authenticated:
+        return ()
+    if state.active_agent is not Agent.TRIAGE or state.pending_flow is not None:
+        return ()
+    agent = responding_agent if responding_agent is not None else Agent.TRIAGE
+    return _AGENT_SUGGESTIONS.get(agent, _AGENT_SUGGESTIONS[Agent.TRIAGE])
+
+
+def remember_suggestions(
+    session: MutableMapping[str, object],
+    suggestions: tuple[QuickAction, ...],
+) -> None:
+    """Guarda so as chaves das perguntas rapidas oferecidas no turno.
+
+    O Streamlit reexecuta o script a cada rerun e redefine `QuickAction`, entao
+    um objeto guardado na sessao pertence a classe da execucao anterior e nao
+    sobrevive a um `isinstance`. A chave e texto e atravessa o rerun intacta.
+    """
+    session[_SUGGESTIONS_KEY] = tuple(item.key for item in suggestions)
+
+
+def stored_suggestions(
+    session: MutableMapping[str, object],
+) -> tuple[QuickAction, ...]:
+    """Devolve as perguntas rapidas do ultimo turno, vazias por padrao."""
+    stored = session.get(_SUGGESTIONS_KEY)
+    if not isinstance(stored, tuple):
+        return ()
+    return tuple(
+        _SUGGESTION_BY_KEY[key]
+        for key in stored
+        if isinstance(key, str) and key in _SUGGESTION_BY_KEY
+    )
+
+
 def current_view(session: MutableMapping[str, object]) -> str:
     """Informa a tela ativa, assumindo a inicial enquanto nada foi escolhido."""
     view = session.get(_VIEW_KEY)
@@ -503,6 +789,17 @@ def start_chat(session: MutableMapping[str, object], user_text: str) -> bool:
     session[_PENDING_KEY] = text
     session[_VIEW_KEY] = CHAT_VIEW
     return True
+
+
+def return_to_landing(session: MutableMapping[str, object]) -> None:
+    """Volta para a tela inicial sem descartar o atendimento em andamento.
+
+    Nada da conversa e perdido: um atalho ou uma frase na tela inicial retoma o
+    mesmo atendimento, ja autenticado, no ponto em que ele parou.
+    """
+    session[_VIEW_KEY] = LANDING_VIEW
+    session.pop(_PENDING_KEY, None)
+    remember_suggestions(session, ())
 
 
 def take_pending_message(session: MutableMapping[str, object]) -> str | None:
@@ -645,6 +942,7 @@ def submit_user_message(
     inicia outro automaticamente.
     """
     init_session(session, welcome_message)
+    remember_suggestions(session, ())
     text = user_text.strip()
     if not text:
         notice = "Digite uma mensagem para continuar."
@@ -672,6 +970,7 @@ def submit_user_message(
         return notice
     session[_CONVERSATION_KEY] = turn.state
     session[_NOTICE_KEY] = None
+    remember_suggestions(session, suggestions_for(turn.state, turn.responding_agent))
     if first_turn and greets_instead_of_replying(turn.state):
         greeting = stored_welcome(session, welcome_message)
         session[_HISTORY_KEY] = _history_with_reply(turn.history, greeting)
@@ -718,6 +1017,57 @@ def _render_quick_actions() -> str | None:
     return selected
 
 
+def _chat_placeholder(session: MutableMapping[str, object]) -> str:
+    """Convida a escrever sem competir com as sugestoes exibidas no painel."""
+    if stored_suggestions(session):
+        return "Ou pergunte outra coisa..."
+    return "Digite sua mensagem"
+
+
+def _render_chat_suggestions(
+    session: MutableMapping[str, object],
+) -> str | None:
+    """Desenha o painel de perguntas rapidas e devolve a escolhida.
+
+    O painel mora na barra inferior, logo acima do campo de texto, para que o
+    cliente escolha uma pergunta pronta ou escreva outra coisa sem sair do
+    lugar. O "x" dispensa a oferta e deixa so o campo.
+    """
+    suggestions = stored_suggestions(session)
+    if not suggestions:
+        return None
+    selected: str | None = None
+    with st.container(key="chat_suggestions"):
+        with st.container(key="chat_suggestions_header"):
+            title, dismiss = st.columns((11, 1), vertical_alignment="center")
+            title.markdown(
+                '<div class="suggestions-title">'
+                "Sobre o que você quer conversar agora?</div>",
+                unsafe_allow_html=True,
+            )
+            with dismiss, st.container(key="chat_suggestions_dismiss"):
+                dismissed = st.button(
+                    "✕",
+                    key="chat_suggestions_dismiss_button",
+                    help="Dispensar as sugestões",
+                    use_container_width=True,
+                )
+        with st.container(key="chat_suggestion_rows"):
+            for suggestion in suggestions[:_SUGGESTION_ROWS]:
+                clicked = st.button(
+                    suggestion.label,
+                    key=f"chat_suggestion_{suggestion.key}",
+                    icon=suggestion.icon,
+                    use_container_width=True,
+                )
+                if clicked:
+                    selected = suggestion.prompt
+    if dismissed:
+        remember_suggestions(session, ())
+        st.rerun()
+    return selected
+
+
 def _render_landing(session: MutableMapping[str, object]) -> None:
     """Mostra a apresentação inicial e abre o chat na primeira interação."""
     with st.container(key="landing"):
@@ -759,7 +1109,25 @@ def _render_chat(
     service: ConversationServiceLike,
 ) -> None:
     """Mostra o histórico, processa a entrada e oferece novo atendimento."""
-    user_input = st.chat_input("Digite sua mensagem")
+    with st.container(key="back_to_landing"):
+        if st.button(
+            "Início",
+            key="back_to_landing_button",
+            icon=":material/arrow_back:",
+            help="Voltar para a tela inicial",
+        ):
+            return_to_landing(session)
+            st.rerun()
+    with st.bottom:
+        # As sugestoes vem antes do campo para ficarem acima dele na barra.
+        chosen = _render_chat_suggestions(session)
+        user_input = st.chat_input(_chat_placeholder(session), key="chat_input")
+    if chosen is not None:
+        # O clique so agenda a mensagem: o rerun redesenha a conversa sem os
+        # atalhos ja usados antes de processar o turno.
+        session[_PENDING_KEY] = chosen
+        remember_suggestions(session, ())
+        st.rerun()
     with st.container(key="chat_view"):
         # Sem cabeçalho nem controles aqui: a marca vive na tela inicial e o
         # chat abre direto na conversa.

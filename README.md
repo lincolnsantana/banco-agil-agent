@@ -31,7 +31,8 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
 
 - **UI** (`app.py`): tela inicial com campo central e quatro atalhos, transição
   animada para o chat, conversa que abre pela mensagem do cliente e responde com
-  as boas-vindas e o pedido de CPF, sessão e histórico
+  as boas-vindas e o pedido de CPF, painel com três perguntas rápidas acima do
+  campo de texto sempre que um especialista conclui o serviço, sessão e histórico
   entre reruns, máscara de CPF/nascimento na exibição, erros recuperáveis
   genéricos e ações Encerrar/Reiniciar alinhadas. Sem regra de negócio.
 - **Grafo** (`agents/router.py`, `agents/graph.py`): entrada exige autenticação;

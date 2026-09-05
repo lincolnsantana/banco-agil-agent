@@ -39,6 +39,9 @@ class ConversationTurn:
     state: ConversationState
     history: tuple[BaseMessage, ...]
     reply: str
+    # Especialista que redigiu a resposta; o estado ja pode ter voltado a
+    # triagem quando o servico termina, entao ele nao serve para essa leitura.
+    responding_agent: Agent | None = None
 
 
 class ConversationService:
@@ -162,6 +165,7 @@ class ConversationService:
             state=result["conversation"],
             history=display_history,
             reply=result["reply"],
+            responding_agent=result["responding_agent"],
         )
 
     def load_session(
