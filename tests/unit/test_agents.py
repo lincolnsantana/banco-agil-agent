@@ -20,6 +20,7 @@ from banco_agil.agents.credit_interview import (
     handle_credit_interview,
 )
 from banco_agil.agents.exchange import handle_exchange
+from banco_agil.agents.knowledge import handle_knowledge
 from banco_agil.agents.state import ConversationState, CreditInterviewDraft
 from banco_agil.agents.triage import agent_for_intent, handle_triage
 from banco_agil.domain.enums import (
@@ -46,6 +47,7 @@ from banco_agil.domain.models import (
     ScoreUpdateResult,
 )
 from banco_agil.services.credit_interview import InterviewField, InterviewProgress
+from banco_agil.services.knowledge import KnowledgeService
 
 OutputModel = TypeVar("OutputModel", bound=BaseModel)
 
@@ -1572,6 +1574,7 @@ def test_end_request_has_priority_in_every_specialist(client: Client) -> None:
             FakeInterviewService(InterviewProgress(next_field=None)),
         ),
         handle_exchange(states[3], "encerrar", FakeExchangeService(None)),
+        handle_knowledge(states[4], "encerrar", KnowledgeService()),
     ]
 
     assert all(state.ended for state in states)

@@ -297,8 +297,21 @@ def test_brand_heading_lives_only_on_the_landing_screen() -> None:
 def test_landing_hero_is_emitted_as_a_single_html_line() -> None:
     import app as ui
 
-    # Quebra dentro do <p> ja colou palavras e confundiu o markdown.
+    # Quebra dentro do bloco ja colou palavras e confundiu o markdown.
     assert "\n" not in ui._LANDING_HERO.strip()
+
+
+def test_landing_hero_uses_only_tags_streamlit_leaves_intact() -> None:
+    import re
+
+    import app as ui
+
+    # O react-markdown do Streamlit troca h1..h6 por componentes proprios e a
+    # classe do autor se perde. div e span atravessam, como nos balões.
+    tags = set(re.findall(r"<(\w+)", ui._LANDING_HERO))
+    assert tags <= {"div", "span"}
+    # A semantica de titulo continua, via ARIA.
+    assert 'role="heading"' in ui._LANDING_HERO
 
 
 def test_chat_avatars_separate_the_bank_from_the_client() -> None:

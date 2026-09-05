@@ -10,6 +10,7 @@ from banco_agil.agents._shared import (
     HELP_REPLY,
     classify_banking_request,
     detect_howto_topic,
+    detects_information_question,
     end_conversation,
     end_reply_if_requested,
     is_help_request,
@@ -50,8 +51,14 @@ def handle_triage(
         _remember_requested_intent(state, user_text)
         return _handle_authentication(state, user_text, service)
 
-    if state.pending_flow is not None:
+    if state.pending_flow is not None and not _supersedes_pending_flow(
+        user_text, state.pending_flow
+    ):
         return _handle_flow_answer(state, user_text)
+    if state.pending_flow is not None:
+        # Pedido novo no lugar da confirmacao: a oferta anterior caduca, em vez
+        # de repetir "nao consegui confirmar" enquanto o cliente muda de assunto.
+        state.pending_flow = None
 
     topic = detect_howto_topic(user_text)
     if topic is not None:
@@ -61,6 +68,13 @@ def handle_triage(
         state.intent = Intent.UNKNOWN
         state.active_agent = Agent.TRIAGE
         return HELP_REPLY
+
+    if detects_information_question(user_text):
+        # Vem depois do howto e da ajuda, que ja tem destino proprio, e antes
+        # da classificacao por acao, que transformaria a duvida em operacao.
+        state.intent = Intent.INFORMATION
+        state.active_agent = Agent.KNOWLEDGE
+        return "Certo. Vou explicar."
 
     intent = _deterministic_intent(user_text)
     if intent is None:
@@ -116,6 +130,22 @@ def _handle_howto(state: ConversationState, topic: Intent) -> str:
     state.intent = Intent.UNKNOWN
     state.active_agent = Agent.TRIAGE
     return f"{explanation} Quer que eu faça isso agora?"
+
+
+def _supersedes_pending_flow(user_text: str, pending: Intent | None) -> bool:
+    """Indica que o cliente trocou de assunto em vez de confirmar a oferta.
+
+    "quero" sozinho confirma a oferta, mas "quero aumentar meu limite" nomeia
+    outro servico e tambem casa com o parser de afirmativa. Por isso o pedido
+    so vence quando aponta para um servico diferente do pendente. Resposta
+    vaga como "nao sei" nao entra aqui: repetir a pergunta ainda e o certo.
+    """
+    requested = classify_banking_request(user_text)
+    if requested is not None and requested is not pending:
+        return True
+    if parse_flow_answer(user_text) is not None:
+        return False
+    return detects_information_question(user_text)
 
 
 def _handle_flow_answer(state: ConversationState, user_text: str) -> str:

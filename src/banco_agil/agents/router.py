@@ -13,6 +13,7 @@ NodeRoute = Literal[
     "credit",
     "credit_interview",
     "exchange",
+    "knowledge",
     "limit_guard",
     "humanize",
     "finalize",
@@ -64,6 +65,7 @@ def route_after_triage(state: GraphState) -> NodeRoute:
             Agent.CREDIT,
             Agent.CREDIT_INTERVIEW,
             Agent.EXCHANGE,
+            Agent.KNOWLEDGE,
         }:
             return _route_for_agent(active_agent)
     return "humanize"
@@ -90,4 +92,6 @@ def _route_for_agent(agent: Agent) -> NodeRoute:
         return "credit_interview"
     if agent is Agent.EXCHANGE:
         return "exchange"
+    if agent is Agent.KNOWLEDGE:
+        return "knowledge"
     return "triage"

@@ -126,6 +126,21 @@ Resultado esperado: os dois primeiros respondem o limite atual sem oferecer
 aumento; o terceiro e o quarto perguntam qual limite total você deseja; só o
 último abre a entrevista de crédito. Confundir qualquer um deles é falha.
 
+## CT10 — Perguntas de conhecimento não viram operação
+
+1. Autentique-se e envie, uma por vez: `por que meu aumento foi rejeitado?`,
+   `o que é score de crédito?`, `quanto tempo demora a análise?`,
+   `vocês cobram taxa para aumentar o limite?` e
+   `o que acontece se eu não pagar a fatura?`.
+2. Envie `quero aumentar meu limite` no mesmo atendimento.
+
+Resultado esperado: as cinco primeiras recebem explicação e uma oferta de próximo
+passo, sem que nenhuma abra pedido de aumento nem inicie a entrevista. A última
+sobre fatura reconhece que o assunto está fora do atendimento e reapresenta os
+serviços. O passo 2 continua abrindo o pedido de aumento normalmente: a rota
+informativa não pode engolir comando. Perguntar e receber "Qual é o limite total
+que gostaria de ter?" é falha.
+
 ## CT05 — Três falhas e encerramento
 
 1. Envie `01234567890` e `01/01/2000` três vezes (reinformando o CPF a cada vez).

@@ -352,6 +352,77 @@ def detect_howto_topic(user_text: str) -> Intent | None:
     return classify_banking_request(user_text)
 
 
+# Abrem duvida sobre o assunto, em vez de pedir uma operacao.
+_INFORMATION_MARKERS = (
+    "por que",
+    "porque",
+    "por quais",
+    "o que e",
+    "o que sao",
+    "o que acontece",
+    "o que significa",
+    "que significa",
+    "de onde",
+    "quanto tempo",
+    "quantas perguntas",
+    "voces cobram",
+    "voces fazem",
+    "voces tem",
+    "voces guardam",
+    "existe taxa",
+    "tem taxa",
+    "tem custo",
+    "e cobrado",
+    "e seguro",
+    "e bom",
+    "e ruim",
+    "vale a pena",
+    "posso pedir",
+    "posso fazer",
+    "preciso informar",
+    "precisa informar",
+    "como funciona",
+    "como voces",
+    "como e calculado",
+    "como e feito",
+)
+# Pedem execucao: prevalecem mesmo com verniz de pergunta. "pedir" fica de
+# fora de proposito, porque aparece tanto em pergunta quanto em pedido, como
+# em "posso pedir aumento de novo?".
+_COMMAND_MARKERS = frozenset(
+    {
+        "quero",
+        "queria",
+        "gostaria",
+        "solicitar",
+        "solicito",
+        "faca",
+        "faz",
+        "abre",
+        "abrir",
+        "inicia",
+        "iniciar",
+        "comeca",
+        "comecar",
+    }
+)
+
+
+def detects_information_question(user_text: str) -> bool:
+    """Indica que o cliente quer entender algo, nao executar uma operacao.
+
+    Sem isto, todo substantivo bancario vira acao e o atendimento responde
+    "qual limite voce quer?" para quem perguntou por que um pedido foi negado.
+    Marcador de comando vence: "quero pedir aumento" continua sendo pedido,
+    mesmo contendo "posso pedir".
+    """
+    normalized = normalized_text(user_text)
+    words = frozenset(_WORD_PATTERN.findall(normalized))
+    if words & _COMMAND_MARKERS:
+        return False
+    return any(marker in normalized for marker in _INFORMATION_MARKERS)
+
+
 _FLOW_AFFIRMATIVE_PHRASES = frozenset(
     {
         "sim",

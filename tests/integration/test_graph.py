@@ -626,3 +626,39 @@ def test_conversation_rejects_empty_message(client: Client) -> None:
 
     with pytest.raises(ValueError, match="message cannot be empty"):
         harness.service.handle_turn(ConversationState(), (), "   ")
+
+
+def test_information_question_is_answered_and_humanized(client: Client) -> None:
+    """A duvida vai ao no de conhecimento e passa pela redacao do LLM.
+
+    O agente respondente nao pode ser TRIAGE: `humanize_reply` devolve o
+    canonico antes de chamar o LLM nesse caso, e a resposta nasceria seca.
+    """
+    llm = RecordingLlm(
+        {
+            "intent": "other",
+            "reply": "Um pedido é recusado quando passa do teto da sua faixa.",
+        }
+    )
+    harness = build_harness(client, llm)
+    state = ConversationState(authenticated_client=client)
+
+    turn = harness.service.handle_turn(state, (), "por que meu aumento foi rejeitado?")
+
+    # O que prova a humanizacao e a chamada ter acontecido com o prompt do
+    # especialista de conhecimento: com TRIAGE nao haveria chamada nenhuma.
+    assert llm.calls, "a resposta de conhecimento precisa passar pela humanizacao"
+    system_message = str(llm.calls[-1][0].content)
+    assert "explicar como o atendimento funciona" in system_message
+    assert "recusado" in turn.reply.casefold()
+
+
+def test_information_question_does_not_start_an_operation(client: Client) -> None:
+    harness = build_harness(client)
+    state = ConversationState(authenticated_client=client)
+
+    turn = harness.service.handle_turn(state, (), "vocês cobram taxa para aumentar?")
+
+    # Antes desta rota, a mesma frase abria um pedido de aumento.
+    assert "limite total" not in turn.reply.casefold()
+    assert "cobrança" in turn.reply.casefold()

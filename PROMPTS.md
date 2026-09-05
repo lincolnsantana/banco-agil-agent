@@ -27,6 +27,7 @@ pós-autenticação ainda ambíguo envia o prompt de triagem ao provedor.
 | `credit` | `1.4.0` | 1.000 |
 | `credit_interview` | `1.5.0` | 1.000 |
 | `exchange` | `1.5.0` | 1.000 |
+| `knowledge` | `1.0.0` | 1.000 |
 
 O prompt global somado ao especialista deve permanecer abaixo de 2.200
 caracteres, antes do estado. O estado dinâmico deve ficar abaixo de 500
@@ -50,6 +51,7 @@ utilizados no turno.
 | Crédito | `current_intent`, `request_status` |
 | Entrevista | `interview_authorized`, `interview_step`, `collected_fields` |
 | Câmbio | `currency_pair` |
+| Conhecimento | `current_intent` |
 
 Não enviar CPF, nascimento, renda, despesas, dívidas, chave, log ou stack trace.
 Valores financeiros necessários a uma tool são validados em Python e passados
@@ -223,7 +225,34 @@ pergunta validada.
 Estado: {{ state }}
 ```
 
-## 10. Carregamento e composição
+## 10. System prompt de Conhecimento
+
+ID: `knowledge`  
+Versão: `1.0.0`
+
+```text
+Escopo: explicar como o atendimento funciona. Sem autenticação,
+retorne à triagem.
+
+Você recebe uma explicação já validada sobre score, limite, entrevista, câmbio ou
+sobre algo que este atendimento não cobre. Responda a dúvida com as palavras do
+cliente e ofereça o próximo passo que o texto validado indicar.
+
+Você explica política, nunca decide nem calcula. Não informe limite, score ou
+cotação: esses valores vêm das consultas, não daqui. Não prometa aprovação, não
+opine sobre dinheiro e não invente regra que o texto validado não traga.
+
+Se o texto validado disser que o assunto está fora do atendimento, reconheça isso
+com cordialidade e reapresente o que você resolve, sem fingir que entendeu.
+
+Estado: {{ state }}
+```
+
+O conteúdo recuperado vem do catálogo curado em
+`src/banco_agil/knowledge/catalog.py`, não do modelo. A recuperação é por
+sobreposição de termos, sem embedding nem banco vetorial.
+
+## 11. Carregamento e composição
 
 Os templates de runtime ficam em `src/banco_agil/prompts/templates.py`. O
 `registry.py` associa ID, versão e especialista; o `renderer.py` valida e compõe.
@@ -247,7 +276,7 @@ Enviar ao provedor:
 Não carregar o Markdown em runtime. A cópia de `templates.py` deve ser atualizada
 no mesmo commit, e testes devem comparar IDs, versões, variáveis e limites.
 
-## 11. Uso do LLM
+## 12. Uso do LLM
 
 O Groq gera a apresentação inicial a partir do prompt `welcome`, sem receber
 estado, histórico ou tools. A saída estruturada precisa mencionar os quatro
@@ -289,7 +318,7 @@ LLM_TIMEOUT_SECONDS=30
 HISTORY_MAX_MESSAGES=6
 ```
 
-## 12. Testes obrigatórios dos prompts
+## 13. Testes obrigatórios dos prompts
 
 | Cenário | Resultado esperado |
 | --- | --- |
@@ -310,7 +339,7 @@ HISTORY_MAX_MESSAGES=6
 | API indisponível | Não inventa cotação |
 | Pedido de encerramento | Prioriza `end_service` |
 
-## 13. Checklist para alteração
+## 14. Checklist para alteração
 
 - [ ] A mudança pertence ao prompt, não à regra de negócio?
 - [ ] O texto ficou menor ou justificadamente maior?

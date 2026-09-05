@@ -26,6 +26,8 @@ EXPECTED_TOOLS = {
     },
     Agent.CREDIT_INTERVIEW: {"update_credit_score", "end_service"},
     Agent.EXCHANGE: {"get_exchange_rate", "end_service"},
+    # Conhecimento explica; nao opera.
+    Agent.KNOWLEDGE: {"end_service"},
 }
 
 
@@ -34,6 +36,7 @@ _EXPECTED_PROMPT_VERSIONS = {
     Agent.CREDIT: "1.4.0",
     Agent.CREDIT_INTERVIEW: "1.5.0",
     Agent.EXCHANGE: "1.5.0",
+    Agent.KNOWLEDGE: "1.0.0",
 }
 
 

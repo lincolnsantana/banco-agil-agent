@@ -4,7 +4,7 @@ import json
 import sqlite3
 from collections.abc import Sequence
 from contextlib import closing
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -23,6 +23,7 @@ from banco_agil.agents._shared import humanize_reply
 from banco_agil.agents.credit import handle_credit
 from banco_agil.agents.credit_interview import handle_credit_interview
 from banco_agil.agents.exchange import handle_exchange
+from banco_agil.agents.knowledge import handle_knowledge
 from banco_agil.agents.router import (
     GraphState,
     GraphUpdate,
@@ -39,6 +40,7 @@ from banco_agil.services.authentication import AuthenticationService
 from banco_agil.services.credit import CreditService
 from banco_agil.services.credit_interview import CreditInterviewService
 from banco_agil.services.exchange import ExchangeService
+from banco_agil.services.knowledge import KnowledgeService
 
 ConversationGraph = CompiledStateGraph[GraphState, None, GraphState, GraphState]
 
@@ -54,12 +56,13 @@ CREATE TABLE IF NOT EXISTS checkpoints (
 
 @dataclass(frozen=True)
 class GraphDependencies:
-    """Servicos permitidos aos quatro nos especialistas."""
+    """Servicos permitidos aos nos especialistas."""
 
     authentication: AuthenticationService
     credit: CreditService
     credit_interview: CreditInterviewService
     exchange: ExchangeService
+    knowledge: KnowledgeService = field(default_factory=KnowledgeService)
     llm: StructuredLlm | None = None
 
 
@@ -202,6 +205,14 @@ def build_graph(dependencies: GraphDependencies) -> ConversationGraph:
         )
         return _handler_update(state, reply, Agent.EXCHANGE)
 
+    def knowledge_node(state: GraphState) -> GraphUpdate:
+        reply = handle_knowledge(
+            state["conversation"],
+            state["user_text"],
+            dependencies.knowledge,
+        )
+        return _handler_update(state, reply, Agent.KNOWLEDGE)
+
     def humanize_node(state: GraphState) -> GraphUpdate:
         reply = humanize_reply(
             state["conversation"],
@@ -218,6 +229,7 @@ def build_graph(dependencies: GraphDependencies) -> ConversationGraph:
     builder.add_node("credit", credit_node)
     builder.add_node("credit_interview", interview_node)
     builder.add_node("exchange", exchange_node)
+    builder.add_node("knowledge", knowledge_node)
     builder.add_node("humanize", humanize_node)
     builder.add_node("limit_guard", _limit_guard)
     builder.add_node("finalize", _finalize)
@@ -226,6 +238,7 @@ def build_graph(dependencies: GraphDependencies) -> ConversationGraph:
     builder.add_conditional_edges("credit_interview", route_after_interview)
     builder.add_edge("credit", "humanize")
     builder.add_edge("exchange", "humanize")
+    builder.add_edge("knowledge", "humanize")
     builder.add_edge("limit_guard", "finalize")
     builder.add_edge("humanize", "finalize")
     builder.add_edge("finalize", END)

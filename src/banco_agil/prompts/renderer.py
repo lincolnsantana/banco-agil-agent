@@ -37,7 +37,7 @@ def compact_state(state: ConversationState) -> CompactState:
                 "current_intent": state.intent.value,
             }
         )
-    elif state.active_agent is Agent.CREDIT:
+    elif state.active_agent is Agent.CREDIT or state.active_agent is Agent.KNOWLEDGE:
         compact["current_intent"] = state.intent.value
     elif state.active_agent is Agent.CREDIT_INTERVIEW:
         draft = state.interview_draft

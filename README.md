@@ -64,6 +64,9 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
 
 ## Funcionalidades implementadas
 
+- Perguntas sobre o atendimento são reconhecidas como dúvida, não como pedido
+  de operação, e respondidas pelo catálogo de conhecimento; assunto fora do
+  escopo é redirecionado com cordialidade.
 - Autenticação com 3 tentativas e encerramento cordial. O pedido feito antes de
   autenticar fica guardado e é retomado assim que a autenticação conclui, sem
   pedir de novo o que o cliente acabou de dizer.
@@ -139,9 +142,17 @@ sim/não, cálculos, encerramento e autenticação continuam determinísticos. T
 de 500 tokens e timeout de 30 s; saída inválida ou falha preserva integralmente
 a resposta canônica.
 
-**Limitações**: sem RAG/banco vetorial (fora do escopo, roteamento usa parser +
-classificador Groq); câmbio exige rede; LLM nunca decide aprovação, limite,
-score ou cotação, apenas sugere a rota ambígua e redige o canônico.
+**Conhecimento**: perguntas sobre o atendimento (por que um pedido foi recusado,
+o que é score, se há cobrança, de onde vem a cotação) são respondidas a partir de
+um catálogo curado em `src/banco_agil/knowledge/catalog.py`, recuperado por
+sobreposição de termos com `BaseRetriever` do LangChain. O catálogo explica
+política e nunca calcula: limite, score e cotação continuam vindo das tools. Sem
+correspondência, o atendimento admite que não sabe em vez de inventar.
+
+**Limitações**: sem banco vetorial nem embeddings (a recuperação é por termo sobre
+um catálogo pequeno e curado, o que dispensa índice vetorial e mantém o resultado
+auditável); câmbio exige rede; LLM nunca decide aprovação, limite, score ou
+cotação, apenas sugere a rota ambígua e redige o canônico.
 
 ## Tutorial de execução e testes
 

@@ -12,6 +12,7 @@ from banco_agil.prompts.templates import (
     CREDIT_PROMPT,
     EXCHANGE_PROMPT,
     GLOBAL_PROMPT,
+    KNOWLEDGE_PROMPT,
     TRIAGE_PROMPT,
     WELCOME_PROMPT,
 )
@@ -31,6 +32,7 @@ _TRIAGE_PROMPT_VERSION = "1.6.0"
 _CREDIT_PROMPT_VERSION = "1.4.0"
 _CREDIT_INTERVIEW_PROMPT_VERSION = "1.5.0"
 _EXCHANGE_PROMPT_VERSION = "1.5.0"
+_KNOWLEDGE_PROMPT_VERSION = "1.0.0"
 
 
 @dataclass(frozen=True)
@@ -135,11 +137,20 @@ PROMPT_REGISTRY = PromptRegistry(
             variables=frozenset({"state"}),
             character_limit=1_000,
         ),
+        Agent.KNOWLEDGE: PromptDefinition(
+            prompt_id="knowledge",
+            version=_KNOWLEDGE_PROMPT_VERSION,
+            template=KNOWLEDGE_PROMPT,
+            variables=frozenset({"state"}),
+            character_limit=1_000,
+        ),
     },
     agent_tools={
         Agent.TRIAGE: (validate_client_cpf, authenticate_client, end_service),
         Agent.CREDIT: (get_credit_limit, request_limit_increase, end_service),
         Agent.CREDIT_INTERVIEW: (update_credit_score, end_service),
         Agent.EXCHANGE: (get_exchange_rate, end_service),
+        # Conhecimento explica; nao opera. So pode encerrar o atendimento.
+        Agent.KNOWLEDGE: (end_service,),
     },
 )

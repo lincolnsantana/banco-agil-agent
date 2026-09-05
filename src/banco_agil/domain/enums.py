@@ -10,6 +10,7 @@ class Agent(StrEnum):
     CREDIT = "credit"
     CREDIT_INTERVIEW = "credit_interview"
     EXCHANGE = "exchange"
+    KNOWLEDGE = "knowledge"
 
 
 class Intent(StrEnum):
@@ -20,6 +21,7 @@ class Intent(StrEnum):
     LIMIT_INCREASE = "limit_increase"
     CREDIT_INTERVIEW = "credit_interview"
     EXCHANGE_RATE = "exchange_rate"
+    INFORMATION = "information"
     HELP = "help"
     OTHER = "other"
     END_SERVICE = "end_service"
