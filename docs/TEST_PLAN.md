@@ -27,24 +27,30 @@ Cobertura automatizada correspondente em `tests/e2e/test_journeys.py`.
    nativa do Streamlit.
 4. Confirme que o chat abre sem nenhuma fala previa: a primeira bolha é a do
    cliente, e a saudação vem como resposta a ela.
-5. Envie uma mensagem e confira os balões internos azul/ardósia com texto branco,
-   sem títulos internos, e avatares `🧑`/`🏦` alinhados à primeira linha do texto,
-   no desktop e no celular.
+5. Envie uma mensagem e confira que o cliente fala em balão azul à direita, com
+   texto branco, e o especialista escreve direto na página à esquerda, sem balão,
+   sem título interno e sem avatar, no desktop e no celular.
 6. Confirme que o menu oferece os temas claro e escuro. Alterne para escuro e
-   verifique que página, header nativo, balões, texto e campo de mensagem ficam
-   escuros e legíveis.
+   verifique que página, header nativo, balão do cliente, texto do especialista,
+   painel de perguntas rápidas e campo de mensagem ficam escuros e legíveis.
 7. Clique no campo de mensagem e confirme o contorno azul, sem borda vermelha.
-8. Envie uma mensagem e confira `🏦` com três pontos animados enquanto aguarda,
-   sem círculo de carregamento ou texto `Digitando...`.
-9. Confirme que o chat não tem botão nem barra lateral: só a conversa e o
-   campo de mensagem. Para recomeçar, recarregue a página.
+8. Envie uma mensagem e confira os três pontos animados na cor do texto enquanto
+   aguarda, sem círculo de carregamento ou texto `Digitando...`.
+9. Ao fim de um serviço, confira o painel acima do campo com o título e três
+   perguntas numeradas do especialista que respondeu; o `x` dispensa a oferta e
+   o campo continua livre. Durante uma coleta em andamento (CPF, valor do
+   aumento, entrevista, moeda) o painel não aparece.
+10. Confirme que o chat não tem barra lateral e que o único controle é o botão
+    `⬅️ Início`, fixo no topo à esquerda, que volta à tela inicial sem descartar
+    o atendimento: um atalho de lá retoma a mesma conversa autenticada.
 
 Resultado esperado: a mensagem do cliente abre a conversa e o assistente
 responde se apresentando — informa que atende limite, aumento, entrevista de
 crédito e câmbio, explica que a autenticação vem primeiro e já solicita o CPF.
 Os atalhos existem apenas na tela inicial e viram mensagem do cliente; dentro do
-chat tudo acontece na conversa, sem controles na tela. Barra, balões, avatares e campo de
-mensagem permanecem legíveis nos dois tamanhos de tela.
+chat tudo acontece na conversa. Barra, balão do cliente, texto do especialista,
+painel de perguntas rápidas e campo de mensagem permanecem legíveis nos dois
+tamanhos de tela.
 
 ## CT01 — Autenticação e consulta de limite
 

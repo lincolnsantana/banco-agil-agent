@@ -47,8 +47,6 @@ _TRANSITION_SECONDS = 0.28
 _QUICK_ACTION_COLUMNS = 4
 _SUGGESTION_ROWS = 3
 
-_CHAT_AVATARS = {"assistant": "🏦", "user": "👤"}
-
 
 @dataclass(frozen=True)
 class QuickAction:
@@ -180,7 +178,6 @@ _UI_STYLES = """
        saem de currentColor, que segue theme.textColor do config.toml
        (branco no modo escuro, preto no claro); as de marca sao fixas. */
     --agil-accent: #0b5cad;
-    --agil-assistant-bubble: #374151;
     --agil-user-bubble: #0b5cad;
     --agil-ease: cubic-bezier(0.16, 1, 0.3, 1);
     --agil-control-radius: 999px;
@@ -210,60 +207,37 @@ body,
     padding-bottom: 7rem;
 }
 
+/* Quem fala se le pelo alinhamento, sem avatar dos dois lados: o especialista
+   escreve direto na pagina, como um documento, e so a fala do cliente ganha
+   balao. */
 .chat-row {
     display: flex;
     width: 100%;
-    align-items: flex-start;
-    gap: 0.65rem;
-    margin: 0.75rem 0;
+    margin: 1.35rem 0;
 }
 
 .chat-row--user {
-    flex-direction: row-reverse;
+    justify-content: flex-end;
 }
 
-.chat-avatar {
-    display: grid;
-    flex: 0 0 38px;
-    width: 38px;
-    height: 38px;
-    place-items: center;
-    border: 1px solid var(--agil-border);
-    border-radius: 50%;
-    background: var(--agil-tint);
-    font-size: 1.15rem;
-    line-height: 1;
-    box-shadow: 0 2px 8px var(--agil-shadow);
-}
-
-.chat-row--user .chat-avatar {
-    border-color: color-mix(in srgb, var(--agil-accent) 48%, var(--agil-border));
-    background: color-mix(in srgb, var(--agil-accent) 14%, transparent);
+.chat-text {
+    max-width: 100%;
+    color: inherit;
+    font-size: 0.94rem;
+    line-height: 1.65;
+    overflow-wrap: anywhere;
 }
 
 .chat-bubble {
-    position: relative;
     width: fit-content;
     max-width: min(76%, 650px);
-    padding: 0.85rem 1.05rem;
-    border-radius: 17px;
+    padding: 0.7rem 1.05rem;
+    border-radius: 20px;
+    background: var(--agil-user-bubble);
     color: #ffffff;
     font-size: 0.94rem;
     line-height: 1.55;
     overflow-wrap: anywhere;
-    box-shadow: 0 5px 18px var(--agil-shadow);
-}
-
-.chat-bubble--assistant {
-    margin-right: auto;
-    border-top-left-radius: 5px;
-    background: var(--agil-assistant-bubble);
-}
-
-.chat-bubble--user {
-    margin-left: auto;
-    border-top-right-radius: 5px;
-    background: var(--agil-user-bubble);
 }
 
 /* O elemento com data-testid="stChatInput" e apenas um wrapper de
@@ -292,22 +266,19 @@ body,
     caret-color: var(--agil-user-bubble);
 }
 
+/* Sem balao para o especialista, os pontos batem na cor do texto da pagina. */
 .typing-indicator {
     display: inline-flex;
     align-items: center;
     gap: 0.32rem;
-    min-height: 42px;
-    padding: 0.65rem 0.9rem;
-    border-radius: 17px;
-    background: var(--agil-assistant-bubble);
-    box-shadow: 0 5px 18px var(--agil-shadow);
+    min-height: 24px;
 }
 
 .typing-indicator__dot {
     width: 7px;
     height: 7px;
     border-radius: 50%;
-    background: #ffffff;
+    background: currentColor;
     animation: typing-bounce 1.15s infinite ease-in-out;
 }
 
@@ -587,13 +558,7 @@ body,
     }
 
     .chat-bubble {
-        max-width: calc(100% - 52px);
-    }
-
-    .chat-avatar {
-        flex-basis: 34px;
-        width: 34px;
-        height: 34px;
+        max-width: 88%;
     }
 
     .st-key-landing {
@@ -653,7 +618,6 @@ _LANDING_HERO = (
 
 _TYPING_INDICATOR = """
 <div class="chat-row chat-row--assistant" role="status" aria-label="Digitando">
-    <span class="chat-avatar" aria-hidden="true">🏦</span>
     <span class="typing-indicator" aria-hidden="true">
         <span class="typing-indicator__dot"></span>
         <span class="typing-indicator__dot"></span>
@@ -834,20 +798,19 @@ def history_for_display(history: Sequence[BaseMessage]) -> list[tuple[str, str]]
     return displayed
 
 
-def chat_avatar(role: str) -> str:
-    """Retorna o avatar visual seguro para cada participante do chat."""
-    return _CHAT_AVATARS.get(role, "💬")
-
-
 def chat_bubble_html(role: str, text: str) -> str:
-    """Monta linha e balão escapados para impedir HTML vindo da conversa."""
+    """Monta a linha da fala, escapada para impedir HTML vindo da conversa.
+
+    O cliente fala dentro de um balão alinhado à direita; o especialista
+    escreve direto na página, à esquerda. Sem avatar: o alinhamento já diz
+    quem fala, e o papel continua legível na classe da linha.
+    """
     bubble_role = "user" if role == "user" else "assistant"
-    avatar = escape(chat_avatar(bubble_role))
+    body_class = "chat-bubble" if bubble_role == "user" else "chat-text"
     safe_text = escape(text).replace("\n", "<br>")
     return (
         f'<div class="chat-row chat-row--{bubble_role}">'
-        f'<span class="chat-avatar" aria-hidden="true">{avatar}</span>'
-        f'<div class="chat-bubble chat-bubble--{bubble_role}">'
+        f'<div class="{body_class} {body_class}--{bubble_role}">'
         f"{safe_text}</div></div>"
     )
 
@@ -1113,7 +1076,7 @@ def _render_chat(
         if st.button(
             "Início",
             key="back_to_landing_button",
-            icon=":material/arrow_back:",
+            icon="⬅️",
             help="Voltar para a tela inicial",
         ):
             return_to_landing(session)

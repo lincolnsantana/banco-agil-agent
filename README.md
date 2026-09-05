@@ -100,9 +100,11 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
   para atualizar crédito e cotação de moedas) que viram mensagem do cliente; uma
   transição animada abre o chat. No chat, cada solicitação pergunta se deseja
   continuar ou encerrar; após o encerramento, informar o CPF inicia outro
-  atendimento. Sessão persistente, mascaramento de dados, tipografia Inter,
-  cabeçalho simples, botão de novo atendimento, avatares por emoji, balões
-  responsivos e temas claro/escuro consistentes.
+  atendimento. Ao fim de cada serviço, um painel acima do campo oferece três
+  perguntas rápidas do especialista que respondeu, sem bloquear a digitação.
+  Sessão persistente, mascaramento de dados, tipografia Inter, atalho de volta
+  à tela inicial, fala do especialista direto na página e balão só para o
+  cliente, layout responsivo e temas claro/escuro consistentes.
 - Auditoria técnica consultável por sessão + métricas por chamada de LLM.
 - Mais de 200 testes (unitários, integração e E2E) + `docs/TEST_PLAN.md` de
   homologação.

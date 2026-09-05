@@ -1,5 +1,6 @@
 """Testes do estado e das acoes da interface Streamlit."""
 
+import re
 import sys
 from dataclasses import dataclass
 from datetime import date
@@ -18,7 +19,6 @@ from app import (  # noqa: E402
     LANDING_VIEW,
     QuickAction,
     build_conversation_service,
-    chat_avatar,
     chat_bubble_html,
     current_view,
     greets_instead_of_replying,
@@ -323,33 +323,37 @@ def test_landing_hero_uses_only_tags_streamlit_leaves_intact() -> None:
     assert 'role="heading"' in ui._LANDING_HERO
 
 
-def test_chat_avatars_separate_the_bank_from_the_client() -> None:
-    # O emoji do cliente e escolha de vitrine; o contrato e serem distintos.
-    assert chat_avatar("assistant") == "🏦"
-    assert chat_avatar("user") not in {"", chat_avatar("assistant")}
-    assert chat_avatar("unknown") == "💬"
+def test_chat_lines_identify_roles_and_escape_content() -> None:
+    user_line = chat_bubble_html("user", "Olá <script>alert(1)</script>")
+    assistant_line = chat_bubble_html("assistant", "Linha 1\nLinha 2")
+
+    # So o cliente tem balao; o especialista escreve direto na pagina.
+    assert "chat-bubble--user" in user_line
+    assert "chat-row--user" in user_line
+    assert "<script>" not in user_line
+    assert "&lt;script&gt;" in user_line
+    assert "chat-text--assistant" in assistant_line
+    assert "chat-row--assistant" in assistant_line
+    assert "chat-bubble" not in assistant_line
+    assert "Linha 1<br>Linha 2" in assistant_line
+    assert "chat-bubble__sender" not in user_line + assistant_line
 
 
-def test_chat_bubbles_identify_roles_and_escape_content() -> None:
-    user_bubble = chat_bubble_html("user", "Olá <script>alert(1)</script>")
-    assistant_bubble = chat_bubble_html("assistant", "Linha 1\nLinha 2")
+def test_chat_lines_carry_no_avatar_emoji() -> None:
+    rendered = "".join(
+        (
+            chat_bubble_html("user", "oi"),
+            chat_bubble_html("assistant", "olá"),
+            typing_indicator_html(),
+        )
+    )
 
-    assert "chat-bubble--user" in user_bubble
-    assert "chat-row--user" in user_bubble
-    assert chat_avatar("user") in user_bubble
-    assert "<script>" not in user_bubble
-    assert "&lt;script&gt;" in user_bubble
-    assert "chat-bubble--assistant" in assistant_bubble
-    assert "chat-row--assistant" in assistant_bubble
-    assert "🏦" in assistant_bubble
-    assert "Linha 1<br>Linha 2" in assistant_bubble
-    assert "chat-bubble__sender" not in user_bubble + assistant_bubble
+    assert not re.search(r"[\U0001F300-\U0001FAFF\u2600-\u27BF]", rendered)
 
 
-def test_typing_indicator_uses_bank_and_three_animated_dots() -> None:
+def test_typing_indicator_shows_three_animated_dots() -> None:
     indicator = typing_indicator_html()
 
-    assert "🏦" in indicator
     assert indicator.count('class="typing-indicator__dot"') == 3
     assert 'aria-label="Digitando"' in indicator
     assert "Digitando..." not in indicator
