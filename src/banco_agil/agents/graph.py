@@ -193,7 +193,13 @@ def build_graph(dependencies: GraphDependencies) -> ConversationGraph:
         # Texto que a triagem roteou nao pode ser relido pelo especialista como
         # troca de fluxo; ele so aproveita valor, moeda ou esclarecimento.
         context.text_classified = reply == HANDOFF_REPLY
-        return _handler_update(state, reply, Agent.TRIAGE, context)
+        update = _handler_update(state, reply, Agent.TRIAGE, context)
+        resumed_text = _resumed_request(state["conversation"])
+        if resumed_text is not None:
+            # O especialista assume o turno agora; sem esta troca ele leria a
+            # data de nascimento e perguntaria de novo o que o cliente ja disse.
+            update["user_text"] = resumed_text
+        return update
 
     def credit_node(state: GraphState) -> GraphUpdate:
         context = _turn_context(state)
@@ -265,6 +271,22 @@ def build_graph(dependencies: GraphDependencies) -> ConversationGraph:
     builder.add_edge("humanize", "finalize")
     builder.add_edge("finalize", END)
     return builder.compile(name="banco-agil-conversation")
+
+
+def _resumed_request(conversation: ConversationState) -> str | None:
+    """Consome o texto do pedido que acabou de ser retomado, se houver.
+
+    Enquanto a autenticacao corre, `deferred_intent` segue preenchido e o texto
+    fica guardado. Quando a triagem retoma o pedido ela zera a intencao, e e
+    esse par - intencao vazia com texto presente - que marca o turno da entrega.
+    """
+    if conversation.deferred_intent is not None:
+        return None
+    texto = conversation.deferred_request
+    if texto is None:
+        return None
+    conversation.deferred_request = None
+    return texto
 
 
 def _handler_update(

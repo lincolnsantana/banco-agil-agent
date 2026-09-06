@@ -50,6 +50,10 @@ class ConversationState(BaseModel):
     pending_flow: Intent | None = None
     # Pedido feito antes da autenticacao, retomado assim que ela conclui.
     deferred_intent: Intent | None = None
+    # Texto original desse pedido. Sem ele o especialista recebe a data de
+    # nascimento no lugar da frase do cliente e volta a perguntar a moeda ou o
+    # valor que ele ja tinha dito. Fica fora do log: e fala do cliente.
+    deferred_request: str | None = Field(default=None, repr=False)
     credit_reanalysis_pending: bool = False
     interview_draft: CreditInterviewDraft = Field(
         default_factory=CreditInterviewDraft,

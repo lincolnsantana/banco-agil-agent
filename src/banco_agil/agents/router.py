@@ -40,6 +40,7 @@ class GraphUpdate(TypedDict, total=False):
     """Atualizacao parcial produzida por um no do grafo."""
 
     conversation: ConversationState
+    user_text: str
     messages: list[BaseMessage]
     reply: str
     responding_agent: Agent | None

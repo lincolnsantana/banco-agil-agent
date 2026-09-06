@@ -1,5 +1,6 @@
 """Testes offline da integracao com a AwesomeAPI."""
 
+import logging
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -252,3 +253,26 @@ def test_exchange_service_returns_confirmed_quote() -> None:
 
     assert result.quote is quote
     assert provider.calls == [("USD", "BRL")]
+
+
+def test_unavailability_is_logged_with_the_status(
+    respx_mock: respx.MockRouter,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Sem esse registro, produção só mostra a frase genérica ao cliente."""
+    respx_mock.get("https://api.local/json/last/USD-BRL").mock(
+        return_value=httpx.Response(429)
+    )
+    client = AwesomeApiClient("https://api.local")
+
+    with (
+        caplog.at_level(logging.WARNING, logger="banco_agil.awesomeapi"),
+        pytest.raises(ExternalServiceUnavailableError),
+    ):
+        client.get_exchange_rate("USD", "BRL")
+
+    registros = [r for r in caplog.records if r.name == "banco_agil.awesomeapi"]
+    assert len(registros) == 2  # uma por tentativa
+    contexto = getattr(registros[-1], "audit", {})
+    assert contexto["status"] == 429
+    assert contexto["pair"] == "USD-BRL"

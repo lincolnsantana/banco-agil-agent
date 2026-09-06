@@ -13,10 +13,17 @@ from banco_agil.domain.exceptions import (
     IntegrationError,
 )
 from banco_agil.domain.models import ExchangeQuote
+from banco_agil.observability.logging import get_logger
 
 SOURCE_NAME = "AwesomeAPI"
 MAX_ATTEMPTS = 2
 TRANSIENT_STATUS_CODES = {408, 429}
+
+# A indisponibilidade chega ao cliente como uma frase generica, o que e correto
+# para ele e inutil para quem opera: sem registro nao da para distinguir bloqueio
+# de rede, limite por IP do provedor e resposta malformada. O par de moedas nao e
+# dado pessoal, entao pode ser registrado.
+_logger = get_logger("banco_agil.awesomeapi")
 
 
 class AwesomeApiClient:
@@ -50,14 +57,25 @@ class AwesomeApiClient:
             raise ValueError("base and quote currencies must be different")
 
         url = f"{self._base_url}/json/last/{base}-{quote}"
-        response = self._request_with_retry(url)
+        response = self._request_with_retry(url, f"{base}-{quote}")
         return _parse_quote(response, base, quote)
 
-    def _request_with_retry(self, url: str) -> httpx.Response:
+    def _request_with_retry(self, url: str, pair: str) -> httpx.Response:
         for attempt in range(MAX_ATTEMPTS):
             try:
                 response = httpx.get(url, timeout=self._timeout_seconds)
             except httpx.RequestError as error:
+                _logger.warning(
+                    "exchange request failed",
+                    extra={
+                        "audit": {
+                            "pair": pair,
+                            "attempt": attempt + 1,
+                            "error": type(error).__name__,
+                            "base_url": self._base_url,
+                        }
+                    },
+                )
                 if attempt + 1 == MAX_ATTEMPTS:
                     raise ExternalServiceUnavailableError(
                         "exchange rate provider is unavailable"
@@ -68,12 +86,26 @@ class AwesomeApiClient:
                 response.status_code in TRANSIENT_STATUS_CODES
                 or response.status_code >= 500
             ):
+                _logger.warning(
+                    "exchange provider returned a transient status",
+                    extra={
+                        "audit": {
+                            "pair": pair,
+                            "attempt": attempt + 1,
+                            "status": response.status_code,
+                        }
+                    },
+                )
                 if attempt + 1 == MAX_ATTEMPTS:
                     raise ExternalServiceUnavailableError(
                         "exchange rate provider is unavailable"
                     )
                 continue
             if not 200 <= response.status_code < 300:
+                _logger.warning(
+                    "exchange request was rejected",
+                    extra={"audit": {"pair": pair, "status": response.status_code}},
+                )
                 raise IntegrationError("exchange rate request was rejected")
             return response
 

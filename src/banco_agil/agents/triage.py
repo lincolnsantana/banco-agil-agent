@@ -267,6 +267,7 @@ def _remember_requested_intent(state: ConversationState, user_text: str) -> None
     intent = _deterministic_intent(user_text)
     if intent in RESUMABLE_INTENTS:
         state.deferred_intent = intent
+        state.deferred_request = user_text
 
 
 def _resume_requested_intent(state: ConversationState) -> str:
@@ -277,7 +278,10 @@ def _resume_requested_intent(state: ConversationState) -> str:
     """
     deferred = state.deferred_intent
     if deferred is None:
+        state.deferred_request = None
         return "Dados confirmados. Como posso ajudar hoje?"
+    # O texto fica no estado de proposito: o grafo o entrega ao especialista
+    # neste mesmo turno, no lugar da data de nascimento, e so entao o descarta.
     state.deferred_intent = None
     state.intent = deferred
     state.active_agent = agent_for_intent(deferred)

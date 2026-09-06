@@ -313,6 +313,43 @@ def test_help_then_close_and_reopen_attendance(tmp_path: Path) -> None:
     assert "localizado" in turn.reply.casefold()
 
 
+def test_currency_asked_before_login_survives_authentication(
+    tmp_path: Path,
+) -> None:
+    """O cliente nao repete a moeda que ja disse antes de se autenticar."""
+    provider = FakeExchangeProvider()
+    service = _build_service(_write_data_dir(tmp_path), provider)
+    state = ConversationState()
+
+    _, replies = _run(
+        service,
+        state,
+        (),
+        ["Qual o valor do dólar?", "01234567890", "20/05/1990"],
+    )
+
+    assert provider.calls == [("USD", "BRL")]
+    assert "5,25" in replies[-1]
+    assert "qual moeda" not in replies[-1].casefold()
+
+
+def test_amount_asked_before_login_survives_authentication(tmp_path: Path) -> None:
+    """Vale para qualquer especialista: o valor pedido tambem sobrevive."""
+    data_dir = _write_data_dir(tmp_path)
+    service = _build_service(data_dir, FakeExchangeProvider())
+    state = ConversationState()
+
+    _, replies = _run(
+        service,
+        state,
+        (),
+        ["quero aumentar meu limite para 4000", "01234567890", "20/05/1990"],
+    )
+
+    assert "aprovado" in replies[-1].casefold()
+    assert "4.000,00" in replies[-1]
+
+
 def test_missing_llm_asks_clarification(tmp_path: Path) -> None:
     service = _build_service(_write_data_dir(tmp_path), FakeExchangeProvider())
     state = ConversationState()
