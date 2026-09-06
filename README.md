@@ -168,8 +168,8 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
 **Linux e macOS**
 
 ```bash
-git clone https://github.com/lincolnsantana/desafio-tecnico-ia.git
-cd desafio-tecnico-ia
+git clone https://github.com/lincolnsantana/banco-agil-agent.git
+cd banco-agil-agent
 
 python3 -m venv .venv
 source .venv/bin/activate
@@ -180,8 +180,8 @@ pip install -e ".[dev]"
 **Windows (PowerShell)**
 
 ```powershell
-git clone https://github.com/lincolnsantana/desafio-tecnico-ia.git
-cd desafio-tecnico-ia
+git clone https://github.com/lincolnsantana/banco-agil-agent.git
+cd banco-agil-agent
 
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -192,8 +192,8 @@ pip install -e ".[dev]"
 **Windows (Prompt de Comando)**
 
 ```bat
-git clone https://github.com/lincolnsantana/desafio-tecnico-ia.git
-cd desafio-tecnico-ia
+git clone https://github.com/lincolnsantana/banco-agil-agent.git
+cd banco-agil-agent
 
 py -m venv .venv
 .venv\Scripts\activate.bat
