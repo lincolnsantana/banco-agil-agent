@@ -228,8 +228,10 @@ def test_alter_limit_routes_to_increase_instead_of_consultation(client: Client) 
 
     turn = harness.service.handle_turn(state, (), "quero alterar o meu limite")
 
+    # O limite atual aparece de proposito para situar o pedido; o que separa
+    # aumento de consulta e a pergunta pelo valor desejado, nao o valor citado.
     assert "limite total" in turn.reply.casefold()
-    assert "2.500,00" not in turn.reply
+    assert "deseja continuar ou encerrar" not in turn.reply.casefold()
     assert state.intent is Intent.LIMIT_INCREASE
 
 
@@ -543,8 +545,8 @@ def test_ambiguous_intent_uses_llm_then_specialist_rewriting(client: Client) -> 
         {
             "intent": "limit_increase",
             "reply": (
-                "Vamos analisar seu pedido. Qual limite total você gostaria de "
-                "ter? Por exemplo: [DADO_1]."
+                "Vamos analisar seu pedido. Hoje seu limite é [DADO_1]. Qual "
+                "limite total você gostaria de ter?"
             ),
         }
     )
@@ -559,7 +561,8 @@ def test_ambiguous_intent_uses_llm_then_specialist_rewriting(client: Client) -> 
     assert state.active_agent is Agent.CREDIT
     assert state.intent is Intent.LIMIT_INCREASE
     assert "limite total" in turn.reply.casefold()
-    assert "4.000,00" in turn.reply
+    # O fato preservado na reescrita e o limite vigente, vindo do estado.
+    assert "2.500,00" in turn.reply
     assert len(llm.calls) == 2
 
 

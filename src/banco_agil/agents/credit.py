@@ -85,11 +85,39 @@ def handle_credit(
         if understanding is not None and understanding.amount is not None:
             requested_limit = understanding.amount
     if requested_limit is None:
-        return context.clarification(user_text, Intent.LIMIT_INCREASE) or (
-            "Claro, posso analisar o aumento com você. Qual é o limite total que "
-            "gostaria de ter? Por exemplo: R$ 4.000,00."
+        return _ask_desired_limit(
+            state,
+            context.clarification(user_text, Intent.LIMIT_INCREASE),
         )
     return _request_increase(state, service, requested_limit)
+
+
+def _current_limit(state: ConversationState) -> Decimal | None:
+    """Le o limite vigente do cliente confiavel do estado, nunca do modelo."""
+    client = state.authenticated_client
+    return None if client is None else client.credit_limit
+
+
+def _ask_desired_limit(
+    state: ConversationState,
+    clarification: str | None,
+) -> str:
+    """Pergunta o valor desejado dizendo antes quanto o cliente tem hoje.
+
+    Sem o limite atual no texto canonico a redacao final nao poderia cita-lo: a
+    guarda de humanizacao so aceita numeros que ja estejam aqui. Com ele, a
+    conversa parte do que o cliente tem para o que ele quer ter, em vez de
+    perguntar um valor no vazio. O esclarecimento redigido pelo LLM entra como
+    a pergunta, quando existe; o fato continua vindo do estado.
+    """
+    question = clarification or "Qual limite total você gostaria de ter?"
+    current_limit = _current_limit(state)
+    if current_limit is None:
+        return question
+    return (
+        f"Posso analisar seu aumento. Hoje seu limite é "
+        f"R$ {format_money(current_limit)}. {question}"
+    )
 
 
 def _request_increase(
@@ -97,6 +125,9 @@ def _request_increase(
     service: CreditService,
     requested_limit: Decimal,
 ) -> str:
+    # Lido antes da tool: aprovacao troca o cliente do estado pelo atualizado, e
+    # o limite anterior e justamente o que da a dimensao do aumento.
+    current_limit = _current_limit(state)
     try:
         result = LimitIncreaseResult.model_validate(
             request_limit_increase.invoke(
@@ -108,9 +139,15 @@ def _request_increase(
             )
         )
     except DomainError:
+        if current_limit is None:
+            return (
+                "Para solicitar um aumento, o valor precisa ser maior que seu "
+                "limite atual. Qual limite total você gostaria de analisar?"
+            )
         return (
-            "Para solicitar um aumento, o valor precisa ser maior que seu limite "
-            "atual. Qual limite total você gostaria de analisar?"
+            f"Hoje seu limite já é R$ {format_money(current_limit)}, então o "
+            "aumento precisa ser de um valor acima desse. Qual limite total "
+            "você gostaria de ter?"
         )
     except RepositoryError:
         return "Não foi possível processar a solicitação agora. Tente novamente."
@@ -120,19 +157,27 @@ def _request_increase(
         state.active_agent = Agent.CREDIT_INTERVIEW
         return (
             f"Analisei seu pedido de limite total de R$ "
-            f"{format_money(result.requested_limit)}, mas ele não pôde ser aprovado "
-            "com o score atual. Se quiser, podemos fazer uma entrevista de crédito "
-            "para atualizar o score e realizar uma nova análise, sem garantia de "
-            "aprovação. Deseja continuar?"
+            f"{format_money(result.requested_limit)}, acima do seu limite atual de "
+            f"R$ {format_money(result.current_limit)}, mas ele não pôde ser "
+            "aprovado com o score de hoje. Podemos fazer uma entrevista de crédito "
+            "para atualizar o score e refazer a análise, sem garantia de aprovação. "
+            "Deseja continuar?"
         )
 
     state.requested_limit = None
     state.intent = Intent.UNKNOWN
     state.active_agent = Agent.TRIAGE
+    if current_limit is None or current_limit == result.requested_limit:
+        return (
+            f"Boa notícia: seu pedido de limite total de R$ "
+            f"{format_money(result.requested_limit)} foi aprovado e o limite "
+            "cadastrado foi atualizado. Deseja continuar ou encerrar o atendimento?"
+        )
     return (
-        f"Boa notícia: seu pedido de limite total de R$ "
-        f"{format_money(result.requested_limit)} foi aprovado e o limite cadastrado "
-        "foi atualizado. Deseja continuar ou encerrar o atendimento?"
+        f"Boa notícia: seu pedido foi aprovado e seu limite cadastrado foi "
+        f"atualizado de R$ {format_money(current_limit)} para R$ "
+        f"{format_money(result.requested_limit)}. Deseja continuar ou encerrar o "
+        "atendimento?"
     )
 
 

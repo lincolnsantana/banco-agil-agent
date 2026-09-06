@@ -227,7 +227,8 @@ def test_metrics_distinguish_zero_and_one_specialist_llm_call() -> None:
     llm = MetricsRecordingLlm(
         {
             "reply": (
-                "Claro! Qual limite total você gostaria de ter? Por exemplo: [DADO_1]."
+                "Claro! Hoje seu limite é [DADO_1]. Qual limite total você "
+                "gostaria de ter?"
             ),
         },
         metrics,

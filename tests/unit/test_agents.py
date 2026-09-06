@@ -1039,6 +1039,103 @@ def test_credit_asks_for_desired_total_with_context(client: Client) -> None:
     assert "limite total" in reply.casefold()
 
 
+def test_asking_for_the_amount_situates_the_current_limit(client: Client) -> None:
+    """A pergunta parte do que o cliente tem para o que ele quer ter.
+
+    O numero precisa estar no canonico: a guarda da humanizacao so aceita, na
+    reescrita, numeros que ja existam aqui. Sem ele, nenhuma redacao poderia
+    dizer ao cliente quanto ele tem hoje.
+    """
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT,
+        intent=Intent.LIMIT_INCREASE,
+    )
+
+    reply = handle_credit(
+        state,
+        "quero aumentar meu limite",
+        FakeCreditService(_increase_result(CreditRequestStatus.APPROVED)),
+        llm=None,
+    )
+
+    assert "2.500,00" in reply
+    assert "limite total" in reply.casefold()
+    assert reply.strip().endswith("?")
+
+
+def test_approved_increase_shows_the_step_from_old_to_new_limit(
+    client: Client,
+) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT,
+        intent=Intent.LIMIT_INCREASE,
+    )
+
+    reply = handle_credit(
+        state,
+        "4000",
+        FakeCreditService(_increase_result(CreditRequestStatus.APPROVED)),
+        llm=None,
+    )
+
+    assert "2.500,00" in reply
+    assert "4.000,00" in reply
+    assert "aprovado" in reply.casefold()
+
+
+def test_rejected_increase_compares_request_against_current_limit(
+    client: Client,
+) -> None:
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT,
+        intent=Intent.LIMIT_INCREASE,
+    )
+
+    reply = handle_credit(
+        state,
+        "4000",
+        FakeCreditService(_increase_result(CreditRequestStatus.REJECTED)),
+        llm=None,
+    )
+
+    assert "4.000,00" in reply
+    assert "2.500,00" in reply
+    assert "não pôde ser aprovado" in reply.casefold()
+
+
+def test_amount_below_the_current_limit_says_what_the_client_has(
+    client: Client,
+) -> None:
+    class RefusingCreditService(FakeCreditService):
+        def request_limit_increase(
+            self,
+            state: ConversationState,
+            new_limit: Decimal,
+        ) -> LimitIncreaseResult:
+            """Recusa como o servico real recusa valor menor que o vigente."""
+            del state, new_limit
+            raise DomainError("new limit must be greater than current limit")
+
+    state = ConversationState(
+        authenticated_client=client,
+        active_agent=Agent.CREDIT,
+        intent=Intent.LIMIT_INCREASE,
+    )
+
+    reply = handle_credit(
+        state,
+        "1000",
+        RefusingCreditService(_increase_result(CreditRequestStatus.APPROVED)),
+        llm=None,
+    )
+
+    assert "2.500,00" in reply
+    assert reply.strip().endswith("?")
+
+
 def test_credit_repository_failure_returns_controlled_reply(client: Client) -> None:
     class FailingCreditService(FakeCreditService):
         def request_limit_increase(
@@ -2043,7 +2140,11 @@ def test_credit_asks_the_understood_clarification(client: Client) -> None:
 
     reply = handle_credit(state, "um pouquinho mais", service, llm=llm, turn_id="t")
 
-    assert reply.startswith("Entendi que quer um pouco mais.")
+    # O fato vem do estado e abre a resposta; o esclarecimento do LLM e a pergunta.
+    assert "2.500,00" in reply
+    assert reply.endswith(
+        "Entendi que quer um pouco mais. Qual valor total você tem em mente?"
+    )
     assert service.requested_limits == []
     assert state.active_agent is Agent.CREDIT
 
