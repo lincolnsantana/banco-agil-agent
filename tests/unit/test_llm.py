@@ -97,8 +97,8 @@ def test_settings_use_required_llm_defaults() -> None:
     settings = Settings(_env_file=None)
 
     assert settings.groq_api_key is None
-    assert settings.groq_model == "llama-3.3-70b-versatile"
-    assert settings.llm_temperature == 0.3
+    assert settings.groq_model == "qwen/qwen3.8-27b"
+    assert settings.llm_temperature == 0.5
     assert settings.llm_max_tokens == 500
     assert settings.llm_timeout_seconds == 30.0
 
@@ -177,8 +177,8 @@ def test_groq_adapter_applies_configuration_and_records_usage(
     assert adapter.calls_remaining("turn-1") == 1
     assert FakeChatGroq.init_kwargs == {
         "api_key": SecretStr("test-key"),
-        "model": "llama-3.3-70b-versatile",
-        "temperature": 0.3,
+        "model": "qwen/qwen3.8-27b",
+        "temperature": 0.5,
         "max_tokens": 500,
         "timeout": 30.0,
         "max_retries": 0,

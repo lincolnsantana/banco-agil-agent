@@ -47,7 +47,7 @@ _EXPECTED_PROMPT_VERSIONS = {
 
 def test_registry_uses_documented_ids_versions_variables_and_limits() -> None:
     assert PROMPT_REGISTRY.global_prompt.prompt_id == "global"
-    assert PROMPT_REGISTRY.global_prompt.version == "1.5.0"
+    assert PROMPT_REGISTRY.global_prompt.version == "1.6.0"
     assert PROMPT_REGISTRY.global_prompt.character_limit == 1_200
     assert PROMPT_REGISTRY.global_prompt.variables == frozenset()
 
@@ -91,7 +91,7 @@ def test_rendering_produces_one_bounded_system_message_for_active_agent(
 
     assert isinstance(rendered.system_message, SystemMessage)
     assert rendered.prompt_version == (
-        f"global@1.5.0+{agent.value}@{_EXPECTED_PROMPT_VERSIONS[agent]}"
+        f"global@1.6.0+{agent.value}@{_EXPECTED_PROMPT_VERSIONS[agent]}"
     )
     assert "{{" not in str(rendered.system_message.content)
     assert len(PROMPT_REGISTRY.global_prompt.template) <= 1_200
@@ -208,7 +208,7 @@ def test_understanding_prompt_is_registered_and_composes_within_limits() -> None
         "consulta de cotação, aguardando a moeda", ("why_rejected", "what_is_score")
     )
 
-    assert rendered.prompt_version == "global@1.5.0+understanding@1.0.0"
+    assert rendered.prompt_version == "global@1.6.0+understanding@1.0.0"
     assert rendered.tools == ()
     content = str(rendered.system_message.content)
     assert "{{" not in content

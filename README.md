@@ -367,7 +367,7 @@ leitura é feita uma vez por turno e compartilhada pelos nós. Crédito, Entrevi
 chamada por turno para redigir o texto canônico com fatos mascarados (até duas
 no turno com classificação), recebendo junto a pergunta do cliente com PII
 mascarada para responderem no tom de quem perguntou. CPF, data, números,
-sim/não, cálculos, encerramento e autenticação continuam determinísticos. Temperatura `0.3`, saída
+sim/não, cálculos, encerramento e autenticação continuam determinísticos. Temperatura `0.5`, saída
 de 500 tokens e timeout de 30 s; saída inválida ou falha preserva integralmente
 a resposta canônica.
 
@@ -387,13 +387,20 @@ auditável); câmbio exige rede; LLM nunca decide aprovação, limite, score ou
 cotação, apenas sugere a rota ambígua e redige o canônico.
 
 A redação pelo modelo depende do orçamento de tokens. O `.env.example` traz 500
-tokens, calibrados para o `llama-3.3-70b-versatile`. Modelos de raciocínio, como
-os `gpt-oss`, gastam tokens pensando antes de emitir a saída estruturada: com
+tokens, calibrados para o `qwen/qwen3.8-27b`. Modelos de raciocínio, como os
+`gpt-oss`, gastam tokens pensando antes de emitir a saída estruturada: com
 orçamento curto, ou com a conta perto do limite por minuto, o provedor devolve
-geração vazia e a chamada falha. O atendimento continua correto, porque a
-resposta canônica prevalece, mas sem a variação da redação. Se as respostas
-parecerem sempre iguais, esse é o primeiro lugar a olhar: aumente
-`BANCO_AGIL_LLM_MAX_TOKENS` ou volte ao modelo documentado.
+geração vazia e a chamada falha.
+
+Provedores também aposentam modelos, e a falha é silenciosa: o atendimento segue
+correto, com a resposta canônica, mas sem variação nenhuma na escrita. **Se as
+respostas parecerem sempre iguais, esse é o primeiro lugar a olhar.** Confirme
+que o modelo configurado ainda existe na sua conta:
+
+```bash
+curl -s https://api.groq.com/openai/v1/models \
+  -H "Authorization: Bearer $BANCO_AGIL_GROQ_API_KEY" | grep '"id"'
+```
 
 ## Funcionalidades implementadas
 

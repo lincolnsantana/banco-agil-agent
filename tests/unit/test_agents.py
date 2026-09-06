@@ -304,7 +304,7 @@ def test_humanization_rewrites_reply_without_exposing_data(
     assert reply == "Claro! Resposta canônica com R$ 2.500,00."
     _, messages, version = llm.calls[0]
     expected_version = _EXPECTED_PROMPT_VERSIONS[agent]
-    assert version == f"global@1.5.0+{agent.value}@{expected_version}"
+    assert version == f"global@1.6.0+{agent.value}@{expected_version}"
     assert "01234567890" not in str(messages)
     assert "2.500,00" not in str(messages)
     assert "R$ 2.500,00" not in str(messages)
@@ -696,7 +696,7 @@ def test_triage_uses_llm_only_for_ambiguous_authenticated_intent(
     assert state.active_agent is Agent.EXCHANGE
     assert len(llm.calls) == 1
     _, messages, version = llm.calls[0]
-    assert version == "global@1.5.0+understanding@1.0.0"
+    assert version == "global@1.6.0+understanding@1.0.0"
     assert "exterior" in str(messages[-1].content)
 
 
@@ -1902,7 +1902,7 @@ def test_context_sends_masked_text_with_understanding_prompt() -> None:
     assert change.requested_intent is Intent.EXCHANGE_RATE
     turn_id, messages, version = llm.calls[0]
     assert turn_id == "turn"
-    assert version == "global@1.5.0+understanding@1.0.0"
+    assert version == "global@1.6.0+understanding@1.0.0"
     prompt = str(messages[0].content)
     assert "aumento de limite" in prompt
     assert "why_rejected" in prompt

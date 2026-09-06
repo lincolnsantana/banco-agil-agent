@@ -17,8 +17,14 @@ class Settings(BaseSettings):
     )
 
     groq_api_key: SecretStr | None = None
-    groq_model: str = "llama-3.3-70b-versatile"
-    llm_temperature: float = Field(default=0.3, ge=0, le=1)
+    # Provedores aposentam modelos: o llama-3.3-70b saiu do catalogo da Groq e
+    # toda chamada passou a falhar em silencio, caindo no texto canonico. Este
+    # responde rapido, redige no tom do cliente e nao gasta tokens raciocinando.
+    groq_model: str = "qwen/qwen3.8-27b"
+    # Sobe de 0.3: a redacao final so muda a forma, e as guardas rejeitam o que
+    # sair do texto validado, entao a variacao e barata e a resposta deixa de
+    # sair sempre igual.
+    llm_temperature: float = Field(default=0.5, ge=0, le=1)
     llm_max_tokens: int = Field(default=500, ge=1)
     llm_timeout_seconds: float = Field(default=30.0, gt=0)
     awesomeapi_base_url: str = "https://economia.awesomeapi.com.br"

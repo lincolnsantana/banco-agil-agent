@@ -28,7 +28,7 @@ from banco_agil.tools.banking import (
 )
 
 _VARIABLE_PATTERN = re.compile(r"{{\s*([a-z_]+)\s*}}")
-_GLOBAL_PROMPT_VERSION = "1.5.0"
+_GLOBAL_PROMPT_VERSION = "1.6.0"
 _TRIAGE_PROMPT_VERSION = "1.6.0"
 _CREDIT_PROMPT_VERSION = "1.4.0"
 _CREDIT_INTERVIEW_PROMPT_VERSION = "1.5.0"

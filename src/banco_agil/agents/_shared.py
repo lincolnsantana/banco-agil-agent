@@ -706,7 +706,9 @@ _LEAK_PHRASES = (
     "texto validado",
     "dado_n",
 )
-_MAX_REWRITE_LENGTH = 360
+# Teto da reescrita. Precisa caber o canonico mais o reconhecimento do que o
+# cliente disse; apertado demais, o modelo devolve o canonico sem mudanca.
+_MAX_REWRITE_LENGTH = 480
 
 
 class RewrittenReply(BaseModel):
@@ -856,11 +858,14 @@ def humanize_reply(
         *safe_history(recent_messages),
         HumanMessage(
             content=(
-                "Redija a resposta final completa a partir do texto validado "
-                "abaixo, reconhecendo o que o cliente pediu e respondendo no "
-                "tom dele. Preserve cada marcador [DADO_N] exatamente como "
-                "está, sem criar fatos, números, decisões ou perguntas novos. "
-                f"Pergunta do cliente: {safe_user_text} "
+                "Você está conversando com o cliente. Escreva a próxima fala "
+                "com suas palavras, natural como a de um atendente humano: "
+                "retome o que ele disse, no tom dele, e diga o mesmo que o "
+                "texto validado diz. Reescreva a forma, nunca o conteúdo. Cada "
+                "marcador [DADO_N] aparece igual, e não entram números, fatos, "
+                "decisões, promessas ou perguntas que o texto validado não "
+                "tenha. Evite repetir as frases dele palavra por palavra. "
+                f"O cliente disse: {safe_user_text} "
                 f"Texto validado: {masked_reply}"
             )
         ),
