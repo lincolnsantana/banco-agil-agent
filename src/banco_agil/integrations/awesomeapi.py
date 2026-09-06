@@ -66,7 +66,11 @@ class AwesomeApiClient:
                 response = httpx.get(url, timeout=self._timeout_seconds)
             except httpx.RequestError as error:
                 _logger.warning(
-                    "exchange request failed",
+                    "exchange request failed: pair=%s attempt=%d error=%s url=%s",
+                    pair,
+                    attempt + 1,
+                    type(error).__name__,
+                    self._base_url,
                     extra={
                         "audit": {
                             "pair": pair,
@@ -87,7 +91,12 @@ class AwesomeApiClient:
                 or response.status_code >= 500
             ):
                 _logger.warning(
-                    "exchange provider returned a transient status",
+                    "exchange provider returned a transient status: "
+                    "pair=%s attempt=%d status=%d body=%s",
+                    pair,
+                    attempt + 1,
+                    response.status_code,
+                    _log_excerpt(response),
                     extra={
                         "audit": {
                             "pair": pair,
@@ -103,13 +112,29 @@ class AwesomeApiClient:
                 continue
             if not 200 <= response.status_code < 300:
                 _logger.warning(
-                    "exchange request was rejected",
+                    "exchange request was rejected: pair=%s status=%d body=%s",
+                    pair,
+                    response.status_code,
+                    _log_excerpt(response),
                     extra={"audit": {"pair": pair, "status": response.status_code}},
                 )
                 raise IntegrationError("exchange rate request was rejected")
             return response
 
         raise ExternalServiceUnavailableError("exchange rate provider is unavailable")
+
+
+def _log_excerpt(response: httpx.Response) -> str:
+    """Primeiros caracteres do corpo, para o log dizer o motivo da recusa.
+
+    Provedor de cotacao nao devolve dado pessoal, e o trecho e curto de
+    proposito: serve para distinguir limite de uso de erro de rota, sem
+    despejar a resposta inteira no log.
+    """
+    try:
+        return " ".join(response.text.split())[:120]
+    except Exception:  # pragma: no cover - corpo ilegivel nao pode quebrar o log
+        return "<indisponivel>"
 
 
 def _normalize_currency(currency: str) -> str:

@@ -276,3 +276,7 @@ def test_unavailability_is_logged_with_the_status(
     contexto = getattr(registros[-1], "audit", {})
     assert contexto["status"] == 429
     assert contexto["pair"] == "USD-BRL"
+    # O status precisa estar na mensagem: formatadores simples, como o do
+    # Streamlit Cloud, nao imprimem o contexto estruturado.
+    assert "status=429" in registros[-1].getMessage()
+    assert "pair=USD-BRL" in registros[-1].getMessage()
