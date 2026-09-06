@@ -46,6 +46,9 @@ nascimento, pedido de aumento situado no limite atual, aprovação de R$ 2.500,0
 para R$ 4.500,00 e o painel de perguntas rápidas acima do campo de
 texto](docs/demo.gif)
 
+**Demonstração ao vivo:** <https://COLE-AQUI-A-URL-DO-APP.streamlit.app>
+<!-- Troque a URL acima pela do app publicado no Streamlit Community Cloud. -->
+
 Tudo roda offline nos testes (mocks + fixtures temporárias). Nenhuma credencial
 real é necessária; sem chave do provedor, os fluxos determinísticos funcionam e
 intenções ambíguas recebem pedido de esclarecimento.
@@ -150,22 +153,117 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
 
 ## Tutorial de execução e testes
 
-Pré-requisitos: Python 3.12+.
+### Pré-requisitos
+
+| Requisito | Versão | Observação |
+| --- | --- | --- |
+| Python | 3.12 ou superior | única exigência obrigatória |
+| pip | acompanha o Python | instala o projeto e as dependências |
+| Git | qualquer | para clonar o repositório |
+| Chave do Groq | opcional | sem ela a aplicação roda em modo determinístico |
+| Docker | opcional | alternativa ao ambiente local |
+
+### Instalação
+
+**Linux e macOS**
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
+git clone https://github.com/lincolnsantana/desafio-tecnico-ia.git
+cd desafio-tecnico-ia
+
+python3 -m venv .venv
+source .venv/bin/activate
+
 pip install -e ".[dev]"
-cp .env.example .env
-# edite .env e preencha BANCO_AGIL_GROQ_API_KEY para ativar o Groq
 ```
 
-Interface:
+**Windows (PowerShell)**
+
+```powershell
+git clone https://github.com/lincolnsantana/desafio-tecnico-ia.git
+cd desafio-tecnico-ia
+
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+
+pip install -e ".[dev]"
+```
+
+**Windows (Prompt de Comando)**
+
+```bat
+git clone https://github.com/lincolnsantana/desafio-tecnico-ia.git
+cd desafio-tecnico-ia
+
+py -m venv .venv
+.venv\Scripts\activate.bat
+
+pip install -e ".[dev]"
+```
+
+Se o PowerShell recusar o `Activate.ps1` por política de execução, rode uma vez
+`Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` na mesma janela, ou
+use o Prompt de Comando.
+
+O `pip install -e ".[dev]"` é o único comando de instalação: ele lê o
+`pyproject.toml` e traz **todas** as dependências, inclusive o Streamlit. Não é
+preciso instalar nenhuma delas separadamente.
+
+| Pacote | Para que serve |
+| --- | --- |
+| `streamlit` | interface do chat |
+| `langgraph` | grafo que orquestra os especialistas |
+| `langchain-core` | mensagens, tools e contratos do LLM |
+| `langchain-groq` | adaptador do provedor de LLM |
+| `pydantic`, `pydantic-settings` | modelos validados e leitura do `.env` |
+| `httpx` | cliente REST que consulta a cotação |
+| `filelock` | escrita concorrente segura nos CSV |
+| `pytest`, `pytest-cov`, `respx` | testes e HTTP falso (extra `[dev]`) |
+| `ruff`, `mypy` | formatação, lint e tipos (extra `[dev]`) |
+
+Com o ambiente virtual ativo, os comandos a seguir são iguais nos três sistemas.
+Confirme que deu certo:
+
+```bash
+streamlit --version                       # Streamlit, version 1.63.0
+python -c "import banco_agil; print('ok')"
+```
+
+### Configuração
+
+Copie o arquivo de exemplo e, se quiser a redação pelo modelo, preencha
+`BANCO_AGIL_GROQ_API_KEY`.
+
+**Linux e macOS**
+
+```bash
+cp .env.example .env
+```
+
+**Windows (PowerShell)**
+
+```powershell
+Copy-Item .env.example .env
+```
+
+**Windows (Prompt de Comando)**
+
+```bat
+copy .env.example .env
+```
+
+### Rodar localmente
 
 ```bash
 streamlit run app.py
 ```
 
-A base de testes tem dez clientes fictícios, cobrindo as cinco faixas de score.
+O Streamlit sobe em <http://localhost:8501> e abre o navegador sozinho. Para
+encerrar, `Ctrl+C` no terminal.
+
+### Clientes para teste
+
+A base tem dez clientes fictícios, cobrindo as cinco faixas de score.
 O limite de cada um respeita o teto da sua faixa, e a coluna final indica o que
 cada perfil exercita:
 
@@ -186,6 +284,8 @@ Os CPFs são fictícios, mas têm dígitos verificadores válidos. A entrevista 
 crédito altera o score e o limite do cliente usado, então o `git checkout
 data/clientes.csv` devolve a base ao estado inicial.
 
+### Com e sem chave do provedor
+
 Sem `BANCO_AGIL_GROQ_API_KEY`, a aplicação roda em **modo determinístico**: nesse
 modo, nenhuma chamada ao provedor é realizada. Com Groq ativo, cada especialista cria
 primeiro uma resposta canônica a partir das regras e tools em Python. O modelo
@@ -200,14 +300,16 @@ via Groq quando o texto continua ambíguo, seja a intenção na triagem, seja um
 recusa ou troca de assunto no meio de um fluxo; cada turno faz no máximo uma
 chamada de classificação e uma de redação.
 
-Roteiro na UI: na tela inicial, clique em **Visualizar limite** (ou digite o
+### Roteiro na interface
+
+Na tela inicial, clique em **Visualizar limite** (ou digite o
 pedido no campo central) → informe o CPF → informe o nascimento →
 `qual é meu limite?`
 (`R$ 2.500,00`) → `quero aumentar meu limite` → `4000` → responda `encerrar`
 para finalizar; o botão **Iniciar novo atendimento** começa outro do zero.
 Demonstração completa em `docs/DEMO.md`; homologação em `docs/TEST_PLAN.md`.
 
-Validação:
+### Testes e validação
 
 ```bash
 ruff format --check .
@@ -217,9 +319,19 @@ pytest --cov=src/banco_agil --cov-report=term-missing
 pytest -q tests/integration tests/e2e
 ```
 
-Docker/CI (opcional): `docker compose config`, `docker compose build`,
-`docker compose up --build`; o workflow `.github/workflows/ci.yml` repete a
-validação sem chaves e sem serviços externos.
+Os testes rodam offline: sem rede, sem credencial e sobre fixtures temporárias,
+então nenhum deles toca os CSV de `data/`.
+
+### Docker e CI (opcional)
+
+```bash
+docker compose config      # valida o arquivo
+docker compose build
+docker compose up --build  # aplicação em contêiner
+```
+
+O workflow `.github/workflows/ci.yml` repete a mesma validação a cada push, sem
+chaves e sem serviços externos.
 
 ## Escolhas técnicas e justificativas
 
