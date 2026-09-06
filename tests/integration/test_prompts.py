@@ -40,7 +40,7 @@ _EXPECTED_PROMPT_VERSIONS = {
     Agent.TRIAGE: "1.6.0",
     Agent.CREDIT: "1.4.0",
     Agent.CREDIT_INTERVIEW: "1.5.0",
-    Agent.EXCHANGE: "1.5.0",
+    Agent.EXCHANGE: "1.6.0",
     Agent.KNOWLEDGE: "1.0.0",
 }
 

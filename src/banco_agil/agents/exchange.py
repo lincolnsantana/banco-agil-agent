@@ -159,7 +159,6 @@ def handle_exchange(
         quote.base_currency,
         quote.quote_currency,
         format_money(quote.rate),
-        quote.source,
         _brasilia_time(quote.quoted_at),
     )
 
@@ -173,23 +172,28 @@ def _format_quote(
     base_currency: str,
     quote_currency: str,
     formatted_rate: str,
-    source: str,
     brasilia_time: str,
 ) -> str:
-    """Monta o canônico amigável; o Groq só reescreve via `humanize_reply`."""
+    """Monta o canônico amigável; o Groq só reescreve via `humanize_reply`.
+
+    A fonte deixou de aparecer para o cliente: ela continua vindo da tool, no
+    resultado validado e na auditoria, mas dentro da conversa era ruído. Fica o
+    horário, que é o que diz se a cotação é de agora. O fecho convida a outro
+    serviço, e é ele que a redação final personaliza.
+    """
     flag = _CURRENCY_FLAGS.get(base_currency, "")
     prefix = f"{flag} " if flag else ""
     if quote_currency == "BRL":
         label = _CURRENCY_LABELS.get(base_currency, base_currency)
         return (
-            f"{prefix}O {label} está em R$ {formatted_rate} "
-            f"(última atualização às {brasilia_time} horário de Brasília, "
-            f"fonte {source}). Deseja continuar ou encerrar o atendimento?"
+            f"{prefix}O {label} está em R$ {formatted_rate}, atualizado às "
+            f"{brasilia_time}. Posso ajudar com mais alguma coisa, como seu "
+            "limite de crédito?"
         )
     return (
-        f"{prefix}A cotação {base_currency}-{quote_currency} é {formatted_rate} "
-        f"(última atualização às {brasilia_time} horário de Brasília, "
-        f"fonte {source}). Deseja continuar ou encerrar o atendimento?"
+        f"{prefix}A cotação {base_currency}-{quote_currency} é {formatted_rate}, "
+        f"atualizada às {brasilia_time}. Posso ajudar com mais alguma coisa, "
+        "como seu limite de crédito?"
     )
 
 

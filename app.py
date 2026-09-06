@@ -437,6 +437,7 @@ body,
 /* Fecha a conversa: o aviso de encerramento e o convite para recomecar ficam
    juntos, no fim do historico. */
 .st-key-new_service {
+    align-items: center;
     margin-top: 0.7rem;
 }
 

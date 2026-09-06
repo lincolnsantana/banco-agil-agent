@@ -276,7 +276,7 @@ _EXPECTED_PROMPT_VERSIONS = {
     Agent.TRIAGE: "1.6.0",
     Agent.CREDIT: "1.4.0",
     Agent.CREDIT_INTERVIEW: "1.5.0",
-    Agent.EXCHANGE: "1.5.0",
+    Agent.EXCHANGE: "1.6.0",
 }
 
 
@@ -1542,11 +1542,12 @@ def test_exchange_maps_dollar_and_returns_confirmed_quote(client: Client) -> Non
     reply = handle_exchange(state, "cotação do dólar", service)
 
     assert service.calls == [("USD", "BRL")]
-    assert all(
-        value in reply
-        for value in ("🇺🇸", "dólar", "5,25", "09:00", "Brasília", "AwesomeAPI")
-    )
+    assert all(value in reply for value in ("🇺🇸", "dólar", "5,25", "09:00"))
     assert "USD-BRL" not in reply
+    # A fonte continua no resultado validado e na auditoria, nunca na conversa.
+    assert "AwesomeAPI" not in reply
+    # O fecho convida a outro servico, e e ele que a redacao final personaliza.
+    assert reply.strip().endswith("?")
 
 
 @pytest.mark.parametrize(
@@ -1586,8 +1587,7 @@ def test_exchange_accepts_free_pair_forms(
     assert service.calls == [expected_pair]
     assert all(marker in reply for marker in expected_markers)
     assert "09:00" in reply
-    assert "Brasília" in reply
-    assert "AwesomeAPI" in reply
+    assert "AwesomeAPI" not in reply
 
 
 def test_exchange_failure_never_invents_rate(client: Client) -> None:

@@ -235,7 +235,8 @@ def test_exchange_success_then_unavailable(tmp_path: Path) -> None:
     assert provider.calls == [("USD", "BRL")]
     assert "🇺🇸" in replies[0]
     assert "5,25" in replies[0]
-    assert "Brasília" in replies[0]
+    assert "09:00" in replies[0]
+    assert "Fonte Fictícia" not in replies[0]
 
     provider.available = False
     _, replies = _run(service, state, history, ["cotação USD-BRL"])
