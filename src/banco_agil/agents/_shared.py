@@ -650,10 +650,7 @@ def end_reply_if_requested(state: ConversationState, user_text: str) -> str | No
     ):
         return None
     end_conversation(state, EndReason.USER_REQUEST)
-    return (
-        "Atendimento encerrado. Quando precisar de um novo atendimento, "
-        "basta informar seu CPF com 11 dígitos."
-    )
+    return "Atendimento encerrado. Obrigado pela conversa e volte quando precisar."
 
 
 def end_conversation(state: ConversationState, reason: EndReason) -> None:

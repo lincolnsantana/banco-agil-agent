@@ -372,7 +372,7 @@ def test_help_lists_services_without_leaving_triage(client: Client) -> None:
     assert harness.requests.requests == []
 
 
-def test_ended_turn_points_to_cpf_for_new_attendance(client: Client) -> None:
+def test_ended_turn_closes_without_instructing_a_cpf(client: Client) -> None:
     harness = build_harness(client)
     state = ConversationState(authenticated_client=client)
 
@@ -380,7 +380,9 @@ def test_ended_turn_points_to_cpf_for_new_attendance(client: Client) -> None:
 
     assert state.ended
     assert "encerrado" in turn.reply.casefold()
-    assert "CPF" in turn.reply
+    # Recomecar virou um botao da interface; o especialista se despede sem
+    # mandar digitar nada, porque essa escolha nao e dele.
+    assert "CPF" not in turn.reply
 
 
 def test_natural_end_request_closes_conversation(client: Client) -> None:
@@ -391,7 +393,7 @@ def test_natural_end_request_closes_conversation(client: Client) -> None:
 
     assert state.ended
     assert "encerrado" in turn.reply.casefold()
-    assert "CPF" in turn.reply
+    assert "CPF" not in turn.reply
     assert harness.exchange.calls == []
 
 

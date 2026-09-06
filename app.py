@@ -44,6 +44,10 @@ _SUGGESTIONS_KEY = "suggestions"
 LANDING_VIEW = "landing"
 CHAT_VIEW = "chat"
 
+# O encerramento agora se resolve por botao, entao a mensagem apenas confirma o
+# fim; informar CPF continua funcionando, mas deixou de ser o caminho oferecido.
+ENDED_NOTICE = "Atendimento encerrado. Obrigado por falar com o Banco Ágil."
+
 # Tempo da animacao de saida da tela inicial antes de trocar para o chat.
 _TRANSITION_SECONDS = 0.28
 # Tempo minimo de exibicao dos pontos de digitacao. Os fluxos deterministicos
@@ -402,7 +406,7 @@ body,
     animation: agil-rise 560ms var(--agil-ease) 170ms both;
 }
 
-.st-key-quick_actions button {
+.st-key-quick_actions button,\n.st-key-new_service button {
     min-height: 54px;
     border: none !important;
     border-radius: var(--agil-control-radius) !important;
@@ -414,21 +418,27 @@ body,
 
 /* O rotulo mora num <p> com peso proprio dentro do botao: sem alcancar esse
    elemento, font-weight no <button> nao muda nada. */
-.st-key-quick_actions button p {
+.st-key-quick_actions button p,\n.st-key-new_service button p {
     font-weight: 600 !important;
 }
 
-.st-key-quick_actions button:hover {
+.st-key-quick_actions button:hover,\n.st-key-new_service button:hover {
     background: var(--agil-control-fill-hover) !important;
     transform: translateY(-1px);
 }
 
-.st-key-quick_actions button:focus-visible {
+.st-key-quick_actions button:focus-visible,\n.st-key-new_service button:focus-visible {
     outline: none;
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--agil-accent) 55%, transparent);
 }
 
 /* ------------------------------- Tela chat ------------------------------ */
+
+/* Fecha a conversa: o aviso de encerramento e o convite para recomecar ficam
+   juntos, no fim do historico. */
+.st-key-new_service {
+    margin-top: 0.7rem;
+}
 
 .st-key-chat_view {
     animation: agil-view-in 460ms var(--agil-ease) both;
@@ -995,7 +1005,7 @@ def submit_user_message(
     except DomainError:
         notice = (
             "Este atendimento foi encerrado. "
-            "Para começar outro, informe seu CPF com 11 dígitos."
+            "Use o botão abaixo para iniciar um novo atendimento."
         )
         session[_NOTICE_KEY] = notice
         return notice
@@ -1201,10 +1211,15 @@ def _render_chat_body(
             st.warning(notice)
         state = cast(ConversationState, session[_CONVERSATION_KEY])
         if state.ended:
-            st.info(
-                "Atendimento encerrado. "
-                "Para um novo atendimento, informe seu CPF com 11 dígitos."
-            )
+            st.info(ENDED_NOTICE)
+            with st.container(key="new_service"):
+                if st.button(
+                    "Iniciar novo atendimento",
+                    key="new_service_button",
+                    icon="🔄",
+                ):
+                    reset_conversation(session, stored_welcome(session))
+                    st.rerun()
 
 
 def main() -> None:

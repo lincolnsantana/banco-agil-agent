@@ -99,8 +99,8 @@ Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
   quatro atalhos (visualizar limite, solicitar aumento de crédito, entrevista
   para atualizar crédito e cotação de moedas) que viram mensagem do cliente; uma
   transição animada abre o chat. No chat, cada solicitação pergunta se deseja
-  continuar ou encerrar; após o encerramento, informar o CPF inicia outro
-  atendimento. Ao fim de cada serviço, um painel acima do campo oferece três
+  continuar ou encerrar; encerrado o atendimento, um botão inicia outro do
+  zero. Ao fim de cada serviço, um painel acima do campo oferece três
   perguntas rápidas do especialista que respondeu, sem bloquear a digitação.
   Sessão persistente, mascaramento de dados, tipografia Inter, atalho de volta
   à tela inicial, fala do especialista direto na página e balão só para o

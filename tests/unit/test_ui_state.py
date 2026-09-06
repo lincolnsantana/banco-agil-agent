@@ -199,7 +199,7 @@ def test_submit_empty_message_does_not_call_service() -> None:
     assert cast(list[BaseMessage], session["history"]) == []
 
 
-def test_submit_ended_conversation_returns_restart_guidance() -> None:
+def test_submit_ended_conversation_points_to_the_new_service_button() -> None:
     from banco_agil.domain.exceptions import DomainError
 
     session: dict[str, object] = {}
@@ -212,7 +212,9 @@ def test_submit_ended_conversation_returns_restart_guidance() -> None:
         session, cast(app.ConversationServiceLike, service), "oi"
     )
 
-    assert "CPF" in reply
+    # O caminho oferecido agora e o botao; digitar CPF continua funcionando,
+    # mas deixou de ser a instrucao.
+    assert "novo atendimento" in reply.casefold()
     assert "Reinicie" not in reply
     assert cast(list[BaseMessage], session["history"]) == []
 
@@ -737,3 +739,30 @@ def test_back_to_landing_keeps_the_conversation_alive() -> None:
     assert stored_suggestions(session) == ()
     assert len(cast(list[BaseMessage], session["history"])) == 2
     assert cast(ConversationState, session["conversation"]).authenticated
+
+
+def test_new_service_after_the_end_starts_a_clean_conversation() -> None:
+    session: dict[str, object] = {}
+    init_session(session)
+    ended = cast(ConversationState, session["conversation"])
+    ended.end(EndReason.USER_REQUEST)
+    session["history"] = [HumanMessage(content="tchau"), AIMessage(content="até logo")]
+    remember_suggestions(
+        session, suggestions_for(_finished_service_state(), Agent.TRIAGE)
+    )
+    session["view"] = CHAT_VIEW
+
+    # O que o botao de novo atendimento executa.
+    reset_conversation(session, stored_welcome(session))
+
+    conversation = cast(ConversationState, session["conversation"])
+    assert not conversation.ended
+    assert conversation.end_reason is None
+    assert cast(list[BaseMessage], session["history"]) == []
+    assert current_view(session) == LANDING_VIEW
+    assert stored_suggestions(session) == ()
+
+
+def test_ended_notice_confirms_the_end_without_asking_for_a_cpf() -> None:
+    assert "encerrado" in app.ENDED_NOTICE.casefold()
+    assert "cpf" not in app.ENDED_NOTICE.casefold()

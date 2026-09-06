@@ -304,8 +304,9 @@ def test_help_then_close_and_reopen_attendance(tmp_path: Path) -> None:
 
     turn = service.handle_turn(state, turn.history, "encerrar")
     assert state.ended
-    assert "CPF" in turn.reply
+    assert "encerrado" in turn.reply.casefold()
 
+    # Um atendimento novo comeca de estado limpo, como faz o botao da interface.
     fresh = ConversationState()
     turn = service.handle_turn(fresh, (), "01234567890")
     assert "localizado" in turn.reply.casefold()
