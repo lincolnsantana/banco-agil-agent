@@ -1032,6 +1032,18 @@ def _optional_llm(settings: Settings) -> GroqStructuredLlm | None:
         return None
 
 
+def load_cloud_secrets() -> None:
+    """Promove segredos do Streamlit Cloud a variaveis de ambiente.
+
+    No Cloud a configuracao chega por `secrets.toml`, e o Streamlit so copia
+    esses valores para o ambiente quando alguem os le. Como `Settings` le do
+    ambiente, sem esta chamada a chave do provedor existiria no painel e mesmo
+    assim o atendimento subiria em modo deterministico, sem aviso. Sem arquivo
+    de segredos, como no desenvolvimento local com `.env`, nao faz nada.
+    """
+    st.secrets.load_if_toml_exists()
+
+
 @st.cache_resource
 def _get_runtime() -> tuple[ConversationService, GroqStructuredLlm | None]:
     settings = Settings()
@@ -1225,6 +1237,8 @@ def main() -> None:
     st.set_page_config(page_title="Banco Ágil - Atendimento", page_icon="🏦")
     st.markdown(_UI_STYLES, unsafe_allow_html=True)
     session = cast(MutableMapping[str, object], st.session_state)
+    # Antes do runtime: e ele quem constroi o Settings a partir do ambiente.
+    load_cloud_secrets()
     service, llm = _get_runtime()
     if _HISTORY_KEY not in session:
         init_session(session, generate_welcome_message(llm))

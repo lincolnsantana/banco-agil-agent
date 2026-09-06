@@ -761,3 +761,21 @@ def test_new_service_after_the_end_starts_a_clean_conversation() -> None:
     assert cast(list[BaseMessage], session["history"]) == []
     assert current_view(session) == LANDING_VIEW
     assert stored_suggestions(session) == ()
+
+
+def test_cloud_secrets_are_loaded_before_the_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sem esta leitura o segredo do Cloud nunca vira variavel de ambiente."""
+    chamadas: list[str] = []
+
+    class FakeSecrets:
+        def load_if_toml_exists(self) -> bool:
+            chamadas.append("lido")
+            return False
+
+    monkeypatch.setattr(app.st, "secrets", FakeSecrets())
+
+    app.load_cloud_secrets()
+
+    assert chamadas == ["lido"]
