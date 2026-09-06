@@ -761,8 +761,3 @@ def test_new_service_after_the_end_starts_a_clean_conversation() -> None:
     assert cast(list[BaseMessage], session["history"]) == []
     assert current_view(session) == LANDING_VIEW
     assert stored_suggestions(session) == ()
-
-
-def test_ended_notice_confirms_the_end_without_asking_for_a_cpf() -> None:
-    assert "encerrado" in app.ENDED_NOTICE.casefold()
-    assert "cpf" not in app.ENDED_NOTICE.casefold()

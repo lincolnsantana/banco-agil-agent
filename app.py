@@ -44,10 +44,6 @@ _SUGGESTIONS_KEY = "suggestions"
 LANDING_VIEW = "landing"
 CHAT_VIEW = "chat"
 
-# O encerramento agora se resolve por botao, entao a mensagem apenas confirma o
-# fim; informar CPF continua funcionando, mas deixou de ser o caminho oferecido.
-ENDED_NOTICE = "Atendimento encerrado. Obrigado por falar com o Banco Ágil."
-
 # Tempo da animacao de saida da tela inicial antes de trocar para o chat.
 _TRANSITION_SECONDS = 0.28
 # Tempo minimo de exibicao dos pontos de digitacao. Os fluxos deterministicos
@@ -438,7 +434,7 @@ body,
    juntos, no fim do historico. */
 .st-key-new_service {
     align-items: center;
-    margin-top: 0.7rem;
+    margin-top: 1.1rem;
 }
 
 .st-key-chat_view {
@@ -1212,7 +1208,8 @@ def _render_chat_body(
             st.warning(notice)
         state = cast(ConversationState, session[_CONVERSATION_KEY])
         if state.ended:
-            st.info(ENDED_NOTICE)
+            # Sem aviso repetindo o fim: o especialista ja se despediu na
+            # conversa, e aqui basta o caminho para recomecar.
             with st.container(key="new_service"):
                 if st.button(
                     "Iniciar novo atendimento",
