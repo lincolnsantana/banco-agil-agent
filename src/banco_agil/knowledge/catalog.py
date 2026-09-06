@@ -103,6 +103,14 @@ KNOWLEDGE_CATALOG: tuple[KnowledgeEntry, ...] = (
         ),
         follow_up=Intent.LIMIT_INCREASE,
     ),
+    KnowledgeEntry(
+        key="assistant_identity",
+        terms=frozenset({"nome", "quem", "robo", "humano", "chama", "assistente"}),
+        answer=(
+            "Sou o assistente virtual do Banco Ágil e cuido de limite, aumento, "
+            "entrevista de crédito e cotação de moedas. Por onde quer começar?"
+        ),
+    ),
     # --- Regras do atendimento ------------------------------------------
     KnowledgeEntry(
         key="why_authenticate",

@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from langchain_core.messages import BaseMessage
 
 from banco_agil.agents._shared import (
+    GREETING_REPLY,
     HANDOFF_REPLY,
     HELP_REPLY,
     RESUMABLE_INTENTS,
@@ -16,6 +17,7 @@ from banco_agil.agents._shared import (
     detects_information_question,
     end_conversation,
     end_reply_if_requested,
+    is_greeting,
     is_help_request,
     parse_flow_answer,
 )
@@ -61,6 +63,12 @@ def handle_triage(
     topic = detect_howto_topic(user_text)
     if topic is not None:
         return _handle_howto(state, topic)
+
+    if is_greeting(user_text):
+        # Cumprimento pede cumprimento de volta, nao um menu seco.
+        state.intent = Intent.UNKNOWN
+        state.active_agent = Agent.TRIAGE
+        return GREETING_REPLY
 
     if is_help_request(user_text):
         state.intent = Intent.UNKNOWN

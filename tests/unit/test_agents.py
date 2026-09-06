@@ -14,6 +14,7 @@ from banco_agil.agents._shared import (
     REFUSAL_REPLY,
     classify_banking_request,
     detects_refusal,
+    end_reply_if_requested,
     humanize_reply,
     mask_user_text,
     parse_flow_change,
@@ -2754,3 +2755,99 @@ def test_triage_llm_receives_masked_text_instead_of_allowed_terms(
     assert "não quero nada disso" in sent
     assert "01234567890" not in sent
     assert "20/05/1990" not in sent
+
+
+@pytest.mark.parametrize(
+    "despedida",
+    (
+        "tchau",
+        "até logo",
+        "adeus",
+        "pode encerrar, obrigado",
+        "obrigado, pode encerrar",
+        "valeu, era só isso",
+        "era só isso mesmo",
+        "não preciso de mais nada",
+        "encerra aí por favor",
+    ),
+)
+def test_natural_farewell_ends_the_service(client: Client, despedida: str) -> None:
+    """Quem se despede espera o fim, nao um menu de servicos."""
+    state = ConversationState(authenticated_client=client)
+
+    reply = end_reply_if_requested(state, despedida)
+
+    assert reply is not None
+    assert state.ended
+    assert state.end_reason is EndReason.USER_REQUEST
+
+
+@pytest.mark.parametrize(
+    "texto",
+    (
+        "quero sair das dívidas",
+        "quero sair do vermelho",
+        "não quero encerrar",
+        "obrigado",
+        "valeu",
+        "isso",
+        "isso mesmo",
+        "sim",
+        "quero aumentar meu limite",
+        "parar de pagar juros",
+    ),
+)
+def test_courtesy_and_look_alikes_never_end_the_service(
+    client: Client, texto: str
+) -> None:
+    """Cortesia solta e assunto parecido nao podem encerrar por engano."""
+    state = ConversationState(authenticated_client=client)
+
+    assert end_reply_if_requested(state, texto) is None
+    assert not state.ended
+
+
+def test_greeting_is_answered_with_a_greeting(client: Client) -> None:
+    state = ConversationState(authenticated_client=client)
+
+    reply = handle_triage(
+        state, "oi, tudo bem?", FakeAuthenticationService(client), llm=None, turn_id="t"
+    )
+
+    assert reply.startswith("Olá!")
+    assert state.active_agent is Agent.TRIAGE
+    assert state.intent is Intent.UNKNOWN
+
+
+def test_greeting_with_a_request_stays_a_request(client: Client) -> None:
+    """Cumprimento colado a um pedido nao pode virar so cumprimento."""
+    state = ConversationState(authenticated_client=client)
+
+    handle_triage(
+        state,
+        "oi, qual é meu limite?",
+        FakeAuthenticationService(client),
+        llm=None,
+        turn_id="t",
+    )
+
+    assert state.intent is Intent.CREDIT_LIMIT
+    assert state.active_agent is Agent.CREDIT
+
+
+def test_asking_for_an_explanation_does_not_start_the_interview(
+    client: Client,
+) -> None:
+    """Pedir explicacao quer entender; quem quer a entrevista pede como fazer."""
+    state = ConversationState(authenticated_client=client)
+
+    handle_triage(
+        state,
+        "me explica esse negócio de score aí",
+        FakeAuthenticationService(client),
+        llm=None,
+        turn_id="t",
+    )
+
+    assert state.active_agent is Agent.KNOWLEDGE
+    assert state.intent is Intent.INFORMATION

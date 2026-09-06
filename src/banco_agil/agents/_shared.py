@@ -30,16 +30,91 @@ _END_PATTERN = re.compile(
     r"^(?:por favor,?\s*)?"
     r"(?:(?:eu\s+)?(?:quero|desejo|gostaria\s+de|preciso|prefiro)\s+|"
     r"(?:pode|podemos|vamos)\s+)?"
-    r"(?:encerrar|encerre|finalizar|finalize|terminar|termine|fechar|feche|parar|sair)"
+    r"(?:encerrar|encerre|encerra|finalizar|finalize|finaliza|terminar|termine|"
+    r"termina|fechar|feche|fecha|parar|sair)"
     r"(?:\s+(?:o|a|este|esta|esse|essa|minha|meu|do|da))?"
     r"(?:\s+(?:atendimento|conversa|chat|sessao|servico))?"
-    r"(?:\s+(?:agora|por\s+favor|por\s+aqui))?$"
+    r"(?:\s+(?:agora|ai|ja|por\s+favor|por\s+aqui))?$"
 )
 _END_CONTINUATION_PATTERN = re.compile(
     r"^(?:eu\s+)?nao\s+(?:quero|desejo|gostaria\s+de|pretendo)\s+"
     r"(?:mais\s+)?continuar(?:\s+com)?(?:\s+(?:o|a|este|esta|minha|meu))?"
     r"(?:\s+(?:atendimento|conversa|chat|sessao|servico))?$"
 )
+# Despedida vale como pedido de fim: quem diz tchau nao espera um menu de
+# servicos. Cada forma e uma frase inteira, nunca um pedaco de outra.
+_FAREWELL_PATTERN = re.compile(
+    r"^(?:tchau(?:\s+tchau)?|xau|adeus|falou|"
+    r"ate\s+(?:logo|mais|breve|a\s+proxima|mais\s+ver))$"
+)
+# "era so isso" fecha o assunto; "isso" e "isso mesmo" sozinhos ficam de fora
+# de proposito, porque sao confirmacao ("isso!") e encerrariam por engano.
+_NOTHING_ELSE_PATTERN = re.compile(
+    r"^(?:(?:era|e)\s+)?so\s+isso(?:\s+mesmo)?$"
+    r"|^era\s+isso(?:\s+mesmo)?$"
+    r"|^isso\s+e\s+tudo$"
+    r"|^(?:nao\s+(?:quero|preciso|vou\s+precisar)(?:\s+de)?\s+mais\s+nada)$"
+    r"|^(?:sem\s+mais(?:\s+nada)?)$"
+)
+# Cortesia que emoldura o pedido sem mudar o que ele diz. Retirada das bordas
+# antes da comparacao, o que evita repetir cada variacao em todos os padroes.
+_COURTESY_EDGE_WORDS = frozenset(
+    {
+        "obrigado",
+        "obrigada",
+        "valeu",
+        "agradeco",
+        "grato",
+        "grata",
+        "entao",
+        "ok",
+        "beleza",
+        "ai",
+        "pode",
+    }
+)
+GREETING_REPLY = (
+    "Olá! Tudo bem por aqui. Posso consultar seu limite, analisar um aumento, "
+    "atualizar seu score pela entrevista ou ver a cotação de moedas. O que você "
+    "prefere?"
+)
+# Frases inteiras: "oi" cumprimenta, mas "oi, qual meu limite" e um pedido e
+# nao pode virar saudacao.
+_GREETINGS = frozenset(
+    {
+        "oi",
+        "ola",
+        "opa",
+        "e ai",
+        "eai",
+        "hey",
+        "bom dia",
+        "boa tarde",
+        "boa noite",
+        "tudo bem",
+        "tudo bom",
+        "oi tudo bem",
+        "ola tudo bem",
+        "oi tudo bom",
+        "bom dia tudo bem",
+        "boa tarde tudo bem",
+        "boa noite tudo bem",
+    }
+)
+
+
+def is_greeting(user_text: str) -> bool:
+    """Reconhece cumprimento isolado, sem pedido junto.
+
+    A pontuacao interna some antes da comparacao: "oi, tudo bem?" e o mesmo
+    cumprimento que "oi tudo bem". O casamento segue sendo da frase inteira,
+    entao "oi, qual e meu limite" continua sendo um pedido.
+    """
+    normalized = normalized_text(user_text)
+    sem_pontuacao = " ".join(re.sub(r"[.,!?;:'\"()\[\]-]", " ", normalized).split())
+    return sem_pontuacao in _GREETINGS
+
+
 HELP_REPLY = (
     "Claro! Posso consultar seu limite de crédito, solicitar um aumento de "
     "limite, conduzir a entrevista de crédito para revisar seu score e "
@@ -93,8 +168,6 @@ _HOWTO_MARKERS = (
     "como funciona",
     "como comeco",
     "como iniciar",
-    "me explica",
-    "me explique",
     "passo a passo",
     "quais sao os passos",
     "o que preciso para",
@@ -342,6 +415,18 @@ _INFORMATION_MARKERS = (
     "como voces",
     "como e calculado",
     "como e feito",
+    # Pedem explicacao, e nao a operacao: "me explica o score" quer entender,
+    # nao iniciar a entrevista. Ficam aqui, e nao entre os marcadores de
+    # como-fazer, porque aqueles levam direto ao fluxo.
+    "me explica",
+    "me explique",
+    "quem e voce",
+    "qual seu nome",
+    "qual e o seu nome",
+    "como voce se chama",
+    "voce e um robo",
+    "voce e humano",
+    "com quem estou falando",
 )
 # Pedem execucao: prevalecem mesmo com verniz de pergunta. "pedir" fica de
 # fora de proposito, porque aparece tanto em pergunta quanto em pedido, como
@@ -640,13 +725,44 @@ def normalized_text(value: str) -> str:
     return " ".join(without_accents.split())
 
 
+def _without_courtesy(normalized: str) -> str:
+    """Remove cortesia das bordas para o pedido ser comparado pelo que diz.
+
+    "pode encerrar, obrigado" e "encerrar" sao o mesmo pedido, e sem esta poda
+    cada padrao teria de repetir todas as combinacoes. Cortesia sozinha nao
+    sobra nada, e string vazia nao casa com nenhum padrao: agradecer no meio do
+    atendimento continua nao encerrando.
+    """
+    palavras = normalized.replace(",", " ").split()
+    inicio, fim = 0, len(palavras)
+    while inicio < fim and palavras[inicio] in _COURTESY_EDGE_WORDS:
+        inicio += 1
+    while fim > inicio and palavras[fim - 1] in _COURTESY_EDGE_WORDS:
+        fim -= 1
+    podado = " ".join(palavras[inicio:fim])
+    # "por favor" e par: some das duas bordas.
+    podado = re.sub(r"^por favor\s+|\s+por favor$", "", podado).strip()
+    return podado
+
+
 def end_reply_if_requested(state: ConversationState, user_text: str) -> str | None:
-    """Encerra o atendimento antes de qualquer outra operacao."""
+    """Encerra o atendimento antes de qualquer outra operacao.
+
+    O pedido de fim vale em qualquer no e a qualquer momento, entao a deteccao
+    precisa alcancar a linguagem real: despedida, cortesia em volta do pedido e
+    "era so isso". Continua por frase inteira, nunca por pedaco: "quero sair das
+    dividas" segue sendo um assunto, nao uma saida.
+    """
     normalized = normalized_text(user_text).strip(".,!?;:'\"()[]-").strip()
-    if (
-        normalized not in _END_REQUESTS
-        and _END_PATTERN.fullmatch(normalized) is None
-        and _END_CONTINUATION_PATTERN.fullmatch(normalized) is None
+    candidatos = {normalized, _without_courtesy(normalized)}
+    if not any(
+        candidato in _END_REQUESTS
+        or _END_PATTERN.fullmatch(candidato) is not None
+        or _END_CONTINUATION_PATTERN.fullmatch(candidato) is not None
+        or _FAREWELL_PATTERN.fullmatch(candidato) is not None
+        or _NOTHING_ELSE_PATTERN.fullmatch(candidato) is not None
+        for candidato in candidatos
+        if candidato
     ):
         return None
     end_conversation(state, EndReason.USER_REQUEST)
