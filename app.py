@@ -10,6 +10,7 @@ from urllib.parse import quote
 
 import streamlit as st
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from pydantic import SecretStr
 from streamlit.delta_generator import DeltaGenerator
 
 from banco_agil.agents.graph import GraphDependencies, build_graph
@@ -928,7 +929,12 @@ def _build_conversation_service(
             client_repository,
         ),
         credit_interview=CreditInterviewService(client_repository),
-        exchange=ExchangeService(AwesomeApiClient(settings.awesomeapi_base_url)),
+        exchange=ExchangeService(
+            AwesomeApiClient(
+                settings.awesomeapi_base_url,
+                token=_optional_secret(settings.awesomeapi_token),
+            )
+        ),
         knowledge=KnowledgeService(
             score_limits=ScoreLimitCsvRepository(settings.data_dir / "score_limite.csv")
         ),
@@ -1019,6 +1025,14 @@ def submit_user_message(
         return greeting
     session[_HISTORY_KEY] = list(turn.history)
     return turn.reply
+
+
+def _optional_secret(secret: SecretStr | None) -> str | None:
+    """Devolve o segredo em texto, ou None quando ele nao foi configurado."""
+    if secret is None:
+        return None
+    value = secret.get_secret_value().strip()
+    return value or None
 
 
 def _optional_llm(settings: Settings) -> GroqStructuredLlm | None:

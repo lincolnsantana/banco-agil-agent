@@ -29,8 +29,17 @@ _logger = get_logger("banco_agil.awesomeapi")
 class AwesomeApiClient:
     """Consulta a ultima cotacao confirmada para um par de moedas."""
 
-    def __init__(self, base_url: str, timeout_seconds: float = 10.0) -> None:
-        """Configura URL e timeout sem realizar requisicao."""
+    def __init__(
+        self,
+        base_url: str,
+        timeout_seconds: float = 10.0,
+        token: str | None = None,
+    ) -> None:
+        """Configura URL, timeout e token opcional sem realizar requisicao.
+
+        O token viaja como parametro de consulta, como a API exige, e nunca
+        entra no log: as mensagens registram a URL base, sem a consulta.
+        """
         normalized_url = base_url.rstrip("/")
         if not normalized_url:
             raise ValueError("base URL cannot be empty")
@@ -38,6 +47,7 @@ class AwesomeApiClient:
             raise ValueError("timeout must be positive")
         self._base_url = normalized_url
         self._timeout_seconds = timeout_seconds
+        self._token = token.strip() if token else None
 
     def get_exchange_rate(
         self,
@@ -63,7 +73,11 @@ class AwesomeApiClient:
     def _request_with_retry(self, url: str, pair: str) -> httpx.Response:
         for attempt in range(MAX_ATTEMPTS):
             try:
-                response = httpx.get(url, timeout=self._timeout_seconds)
+                response = httpx.get(
+                    url,
+                    params={"token": self._token} if self._token else None,
+                    timeout=self._timeout_seconds,
+                )
             except httpx.RequestError as error:
                 _logger.warning(
                     "exchange request failed: pair=%s attempt=%d error=%s url=%s",

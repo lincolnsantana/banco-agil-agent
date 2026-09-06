@@ -280,3 +280,48 @@ def test_unavailability_is_logged_with_the_status(
     # Streamlit Cloud, nao imprimem o contexto estruturado.
     assert "status=429" in registros[-1].getMessage()
     assert "pair=USD-BRL" in registros[-1].getMessage()
+
+
+@respx.mock
+def test_token_travels_as_query_parameter() -> None:
+    """Com token a cota deixa de ser contada por IP e passa a ser da conta."""
+    route = respx.get(QUOTE_URL, params={"token": "segredo-do-cambio"}).mock(
+        return_value=httpx.Response(200, json=quote_payload())
+    )
+    client = AwesomeApiClient(BASE_URL, token="segredo-do-cambio")
+
+    quote = client.get_exchange_rate("USD", "BRL")
+
+    assert route.call_count == 1
+    assert quote.base_currency == "USD"
+
+
+@respx.mock
+def test_without_token_the_request_carries_no_query() -> None:
+    route = respx.get(QUOTE_URL).mock(
+        return_value=httpx.Response(200, json=quote_payload())
+    )
+    client = AwesomeApiClient(BASE_URL)
+
+    client.get_exchange_rate("USD", "BRL")
+
+    assert route.calls.last.request.url.query == b""
+
+
+@respx.mock
+def test_token_never_reaches_the_log(caplog: pytest.LogCaptureFixture) -> None:
+    """O log registra a URL base, nunca a consulta que carrega o segredo."""
+    respx.get(QUOTE_URL).mock(side_effect=httpx.ConnectError("sem rota"))
+    client = AwesomeApiClient(BASE_URL, token="segredo-do-cambio")
+
+    with (
+        caplog.at_level(logging.WARNING, logger="banco_agil.awesomeapi"),
+        pytest.raises(ExternalServiceUnavailableError),
+    ):
+        client.get_exchange_rate("USD", "BRL")
+
+    registrado = " ".join(r.getMessage() for r in caplog.records) + str(
+        [getattr(r, "audit", {}) for r in caplog.records]
+    )
+    assert "segredo-do-cambio" not in registrado
+    assert "ConnectError" in registrado

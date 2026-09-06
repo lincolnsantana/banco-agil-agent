@@ -18,6 +18,8 @@
 
 ## Visão Geral
 
+**Teste aqui:** <https://banco-agil-agent.streamlit.app/>
+
 O Banco Ágil é um banco digital fictício cujo atendimento ao cliente é feito por
 quatro especialistas internos de IA, apresentados ao cliente como uma única
 conversa contínua em Streamlit:
@@ -46,8 +48,6 @@ nascimento, pedido de aumento situado no limite atual, aprovação de R$ 2.500,0
 para R$ 4.500,00 e o painel de perguntas rápidas acima do campo de
 texto](docs/demo.gif)
 
-**Demonstração ao vivo:** <https://COLE-AQUI-A-URL-DO-APP.streamlit.app>
-<!-- Troque a URL acima pela do app publicado no Streamlit Community Cloud. -->
 
 Tudo roda offline nos testes (mocks + fixtures temporárias). Nenhuma credencial
 real é necessária; sem chave do provedor, os fluxos determinísticos funcionam e
@@ -283,6 +283,15 @@ cada perfil exercita:
 Os CPFs são fictícios, mas têm dígitos verificadores válidos. A entrevista de
 crédito altera o score e o limite do cliente usado, então o `git checkout
 data/clientes.csv` devolve a base ao estado inicial.
+
+### Cota da API de câmbio
+
+A AwesomeAPI é pública e funciona sem credencial, mas nesse modo a cota é contada
+**por IP**. Em hospedagem de IP compartilhado, como o Streamlit Community Cloud,
+o limite estoura por uso alheio e a cotação passa a responder
+`429 QuotaExceeded` — o cliente vê "cotação indisponível" e o log registra o
+status. Gere um token gratuito em <https://awesomeapi.com.br> e configure
+`BANCO_AGIL_AWESOMEAPI_TOKEN` para a cota passar a ser da sua conta.
 
 ### Com e sem chave do provedor
 
