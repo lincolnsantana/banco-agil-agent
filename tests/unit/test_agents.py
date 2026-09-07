@@ -2860,3 +2860,95 @@ def test_asking_for_an_explanation_does_not_start_the_interview(
 
     assert state.active_agent is Agent.KNOWLEDGE
     assert state.intent is Intent.INFORMATION
+
+
+def test_rewrite_asks_again_when_the_model_echoes_the_validated_text(
+    client: Client,
+) -> None:
+    """Devolver o canonico intacto e reescrita inutil: o cliente ve o de sempre."""
+
+    @dataclass
+    class EchoThenRewriteLlm(RecordingLlm):
+        responses: list[object] = field(default_factory=list)
+
+        def invoke_structured(
+            self,
+            turn_id: str,
+            messages: list[BaseMessage],
+            output_schema: type[OutputModel],
+            *,
+            prompt_version: str | None = None,
+        ) -> OutputModel:
+            """Copia na primeira tentativa e redige na segunda."""
+            self.response = self.responses.pop(0)
+            return super().invoke_structured(
+                turn_id, messages, output_schema, prompt_version=prompt_version
+            )
+
+    canonical = "Seu limite atual é R$ 2.500,00. Deseja continuar ou encerrar?"
+    llm = EchoThenRewriteLlm(
+        response=None,
+        responses=[
+            {"reply": "Seu limite atual é [DADO_1]. Deseja continuar ou encerrar?"},
+            {"reply": "Hoje você tem [DADO_1] de limite. Seguimos ou encerramos?"},
+        ],
+    )
+    state = ConversationState(authenticated_client=client)
+
+    reply = humanize_reply(
+        state,
+        canonical,
+        llm,
+        "turn-eco",
+        responding_agent=Agent.CREDIT,
+        recent_messages=[],
+        user_text="qual meu limite?",
+    )
+
+    assert reply == "Hoje você tem R$ 2.500,00 de limite. Seguimos ou encerramos?"
+    assert len(llm.calls) == 2
+    assert "devolveu o conteúdo quase igual" in str(llm.calls[1][1][-1].content)
+
+
+def test_rewrite_keeps_the_canonical_when_both_attempts_echo(client: Client) -> None:
+    """Sem saldo nem alternativa, o texto deterministico prevalece."""
+    canonical = "Seu limite atual é R$ 2.500,00. Deseja continuar ou encerrar?"
+    llm = RecordingLlm(
+        {"reply": "Seu limite atual é [DADO_1]. Deseja continuar ou encerrar?"}
+    )
+    state = ConversationState(authenticated_client=client)
+
+    reply = humanize_reply(
+        state,
+        canonical,
+        llm,
+        "turn-eco-2",
+        responding_agent=Agent.CREDIT,
+        recent_messages=[],
+        user_text="qual meu limite?",
+    )
+
+    assert reply == canonical
+    assert len(llm.calls) == 2
+
+
+def test_credential_turn_omits_the_client_line_from_the_instruction(
+    client: Client,
+) -> None:
+    """Nascimento mascarado nao pode virar um pedido inventado na instrucao."""
+    llm = RecordingLlm({"reply": "Tudo certo por aqui. Em que posso ajudar?"})
+    state = ConversationState(authenticated_client=client)
+
+    humanize_reply(
+        state,
+        "Dados confirmados. Como posso ajudar hoje?",
+        llm,
+        "turn-credencial",
+        responding_agent=Agent.TRIAGE,
+        recent_messages=[],
+        user_text="20/05/1990",
+    )
+
+    instrucao = str(llm.calls[0][1][-1].content)
+    assert "O cliente disse" not in instrucao
+    assert "pedido bancario" not in instrucao

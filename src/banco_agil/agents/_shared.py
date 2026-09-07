@@ -13,7 +13,7 @@ from banco_agil.domain.enums import Agent, EndReason, Intent
 from banco_agil.domain.exceptions import IntegrationError
 from banco_agil.domain.models import EndServiceResult
 from banco_agil.integrations.llm import StructuredLlm
-from banco_agil.prompts.renderer import render_prompt
+from banco_agil.prompts.renderer import RenderedPrompt, render_prompt
 from banco_agil.tools.banking import end_service
 
 _END_REQUESTS = {
@@ -833,6 +833,11 @@ def humanize_reply(
     O LLM recebe o canônico com fatos mascarados e pode redigir a resposta
     final completa. Falhas, saídas inseguras e orçamento consumido retornam
     silenciosamente ao texto determinístico.
+
+    Devolver o canônico intacto é uma reescrita inútil: o cliente vê a mesma
+    frase de sempre. Quando isso acontece, e o turno ainda tem saldo, uma
+    segunda tentativa cobra a mudança explicitamente. Medido: com histórico na
+    conversa o modelo copiava o texto validado em parte das vezes.
     """
     if (
         llm is None
@@ -847,23 +852,89 @@ def humanize_reply(
     prompt_state = state.model_copy(deep=True)
     prompt_state.active_agent = responding_agent
     rendered = render_prompt(prompt_state)
-    safe_user_text = mask_user_text(user_text) or "pedido bancario"
+    # Vazio quando a fala era credencial: a mascara zera CPF e nascimento. Nesse
+    # caso a instrucao omite a linha, em vez de inventar um pedido genérico que
+    # o modelo reconheceria como se o cliente o tivesse dito.
+    safe_user_text = mask_user_text(user_text)
+    history = safe_history(recent_messages)
+
+    rewritten = _rewrite_once(
+        llm,
+        turn_id,
+        rendered,
+        history,
+        _rewrite_instruction(safe_user_text, masked_reply),
+        facts,
+        canonical_reply,
+    )
+    if rewritten is not None and rewritten != canonical_reply:
+        return rewritten
+    if llm.calls_remaining(turn_id) == 0:
+        return canonical_reply
+    second = _rewrite_once(
+        llm,
+        turn_id,
+        rendered,
+        history,
+        _rewrite_instruction(safe_user_text, masked_reply, insist=True),
+        facts,
+        canonical_reply,
+    )
+    return second if second is not None else canonical_reply
+
+
+def _rewrite_instruction(
+    safe_user_text: str,  # vazio quando a fala do cliente era credencial
+    masked_reply: str,
+    *,
+    insist: bool = False,
+) -> str:
+    """Monta o pedido de redação: o conteúdo antes, a tarefa depois.
+
+    A ordem importa. Com o texto validado no fim, ele fica sendo a última coisa
+    lida e o modelo tende a devolvê-lo como está.
+    """
+    reforco = (
+        (
+            "A tentativa anterior devolveu o conteúdo quase igual, o que não "
+            "serve. Escreva agora de outra forma, começando diferente. "
+        )
+        if insist
+        else ""
+    )
+    fala_do_cliente = f"O cliente disse: {safe_user_text}\n" if safe_user_text else ""
+    reconhecimento = (
+        "Comece reconhecendo o que o cliente disse, no tom dele. "
+        if safe_user_text
+        else ""
+    )
+    return (
+        f"{fala_do_cliente}"
+        f"Conteúdo a transmitir: {masked_reply}\n\n"
+        f"{reforco}"
+        "Escreva a próxima fala do atendente com suas palavras, natural como a "
+        "de uma pessoa. Não reproduza o conteúdo acima palavra por palavra: ele "
+        f"diz o que informar, não como escrever. {reconhecimento}"
+        "Mantenha cada marcador [DADO_N] igual, não crie número, fato, decisão, "
+        "promessa nem pergunta que o conteúdo não tenha, e termine pela mesma "
+        "pergunta em outras palavras."
+    )
+
+
+def _rewrite_once(
+    llm: StructuredLlm,
+    turn_id: str,
+    rendered: RenderedPrompt,
+    history: Sequence[BaseMessage],
+    instruction: str,
+    facts: dict[str, str],
+    canonical_reply: str,
+) -> str | None:
+    """Uma tentativa de redação, ou None quando ela não pode ser aceita."""
     messages: list[BaseMessage] = [
         rendered.system_message,
-        *safe_history(recent_messages),
-        HumanMessage(
-            content=(
-                "Você está conversando com o cliente. Escreva a próxima fala "
-                "com suas palavras, natural como a de um atendente humano: "
-                "retome o que ele disse, no tom dele, e diga o mesmo que o "
-                "texto validado diz. Reescreva a forma, nunca o conteúdo. Cada "
-                "marcador [DADO_N] aparece igual, e não entram números, fatos, "
-                "decisões, promessas ou perguntas que o texto validado não "
-                "tenha. Evite repetir as frases dele palavra por palavra. "
-                f"O cliente disse: {safe_user_text} "
-                f"Texto validado: {masked_reply}"
-            )
-        ),
+        *history,
+        HumanMessage(content=instruction),
     ]
     try:
         result = llm.invoke_structured(
@@ -873,12 +944,11 @@ def humanize_reply(
             prompt_version=rendered.prompt_version,
         )
     except IntegrationError:
-        return canonical_reply
+        return None
 
-    rewritten = normalize_dashes(result.reply)
-    restored = _restore_facts(rewritten, facts)
+    restored = _restore_facts(normalize_dashes(result.reply), facts)
     if restored is None or not _preserves_decision(restored, canonical_reply):
-        return canonical_reply
+        return None
     return restored
 
 

@@ -306,8 +306,10 @@ responder com as palavras de quem perguntou; a pergunta orienta o tom, nunca o
 conteúdo, e a saída só é aceita se preservar marcadores, números, decisão e
 pergunta do canônico. Todo nó usa parser determinístico primeiro e só classifica
 via Groq quando o texto continua ambíguo, seja a intenção na triagem, seja uma
-recusa ou troca de assunto no meio de um fluxo; cada turno faz no máximo uma
-chamada de classificação e uma de redação.
+recusa ou troca de assunto no meio de um fluxo; cada turno faz no máximo duas
+chamadas, entre classificação e redação: quando a redação devolve o texto
+validado sem mudança nenhuma, a segunda chamada cobra a reescrita, porque
+repetir a frase de sempre é o mesmo que não redigir.
 
 ### Roteiro na interface
 

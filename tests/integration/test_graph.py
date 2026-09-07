@@ -673,7 +673,9 @@ def test_information_question_does_not_start_an_operation(client: Client) -> Non
 def test_refusal_with_new_request_is_served_by_the_other_specialist(
     client: Client,
 ) -> None:
-    llm = RecordingLlm({"reply": "O dólar está em [DADO_1] agora. Mais algo?"})
+    llm = RecordingLlm(
+        {"reply": "O dólar está em [DADO_1] agora, às [DADO_2]:[DADO_3]. Mais algo?"}
+    )
     harness = build_harness(client, llm)
     state = ConversationState(
         authenticated_client=client,
@@ -738,7 +740,7 @@ def test_llm_read_refusal_is_followed_by_the_final_wording(client: Client) -> No
     assert len(llm.calls) == 2
     # Primeira chamada classifica a recusa; a segunda redige o canonico.
     assert "entender o turno" in str(llm.calls[0][0].content)
-    assert "Texto validado" in str(llm.calls[1][-1].content)
+    assert "Conteúdo a transmitir" in str(llm.calls[1][-1].content)
     assert state.active_agent is Agent.TRIAGE
 
 
