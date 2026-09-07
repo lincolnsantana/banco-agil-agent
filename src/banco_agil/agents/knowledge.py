@@ -7,6 +7,7 @@ from langchain_core.messages import BaseMessage
 from banco_agil.agents._shared import (
     HELP_REPLY,
     authentication_reply_if_missing,
+    detects_information_question,
     end_reply_if_requested,
     format_money,
     is_help_request,
@@ -70,6 +71,57 @@ def handle_knowledge(
     if entry.follow_up is not None:
         state.pending_flow = entry.follow_up
     return _answer_with_facts(entry, state.authenticated_client, service)
+
+
+_UNKNOWN_MID_STEP_REPLY = "Sobre isso eu não sei responder."
+
+
+def explanation_for_pending_step(
+    user_text: str,
+    service: KnowledgeService,
+    client: Client | None,
+    pending_question: str,
+    default_topic: str | None = None,
+) -> str | None:
+    """Explica a duvida do cliente sem descartar o passo em andamento.
+
+    Pergunta no meio de um fluxo nao e resposta nem desistencia: quem quer
+    entender por que a renda e pedida continua querendo a entrevista. A
+    explicacao vem do catalogo, com os fatos do cliente quando cabem, e o passo
+    e repetido em seguida, de modo que nada do que ja foi coletado se perde.
+
+    `default_topic` e a duvida provavel do passo, usada quando os termos nao
+    alcancam nenhuma entrada. E o contexto decidindo o sentido da pergunta:
+    "quanto eu posso pedir" no passo do valor e sobre a faixa de score, e a
+    mesma pergunta valeria outra explicacao em outro passo. Sem isso, a
+    alternativa seria alargar os termos do catalogo, o que rouba as perguntas
+    das entradas vizinhas.
+    """
+    if not detects_information_question(user_text):
+        return None
+    entry = service.find(user_text)
+    if entry is None and default_topic is not None:
+        entry = service.entry_for(default_topic)
+    if entry is None:
+        return f"{_UNKNOWN_MID_STEP_REPLY} {pending_question}"
+    return f"{_explanation_only(entry, client, service)} {pending_question}"
+
+
+def _explanation_only(
+    entry: KnowledgeEntry,
+    client: Client | None,
+    service: KnowledgeService,
+) -> str:
+    """Devolve a explicacao sem a pergunta final propria do catalogo.
+
+    No meio de um fluxo a pergunta que vale e a do passo pendente; manter as
+    duas deixaria o cliente com duas perguntas e nenhuma prioridade.
+    """
+    answer = _answer_with_facts(entry, client, service)
+    body, separator, question = answer.rpartition(". ")
+    if separator and question.endswith("?"):
+        return f"{body}."
+    return answer
 
 
 def _answer_with_facts(

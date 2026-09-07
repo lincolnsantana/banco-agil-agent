@@ -248,10 +248,12 @@ def test_metrics_distinguish_zero_and_one_specialist_llm_call() -> None:
     ambiguous_service = _service(None, ambiguous_llm)
     ambiguous_state = ConversationState(authenticated_client=_client())
     ambiguous_service.handle_turn(ambiguous_state, (), "preciso resolver outra coisa")
-    assert len(ambiguous_metrics.calls) == 1
-    assert ambiguous_metrics.calls[0].prompt_version == (
-        "global@1.6.0+understanding@1.0.0"
-    )
+    # Duas chamadas: a leitura do turno e a redacao da propria triagem, que
+    # deixou de ser texto fixo.
+    assert [call.prompt_version for call in ambiguous_metrics.calls] == [
+        "global@1.6.0+understanding@1.0.0",
+        "global@1.6.0+triage@1.6.0",
+    ]
 
 
 def test_audit_failure_is_non_fatal(tmp_path: Path) -> None:

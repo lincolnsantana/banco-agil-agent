@@ -527,19 +527,20 @@ def test_graph_step_guard_returns_controlled_reply(client: Client) -> None:
     assert harness.exchange.calls == []
 
 
-def test_ambiguous_intent_falls_back_to_canonical_clarification(
+def test_ambiguous_intent_clarification_is_written_by_the_llm(
     client: Client,
 ) -> None:
-    llm = RecordingLlm({"reply": "Não deveria ser usada."})
+    """A triagem tambem conversa: o esclarecimento dela passa pela redacao."""
+    llm = RecordingLlm({"reply": "Consigo ver limite ou cotação, o que prefere?"})
     harness = build_harness(client, llm)
     state = ConversationState(authenticated_client=client)
 
     turn = harness.service.handle_turn(state, (), "preciso resolver outra coisa")
 
-    assert len(llm.calls) == 1
+    # Uma chamada para ler o turno, outra para redigir a resposta.
+    assert len(llm.calls) == 2
     assert state.active_agent is Agent.TRIAGE
-    assert "limite" in turn.reply.casefold()
-    assert "cotação" in turn.reply.casefold()
+    assert turn.reply == "Consigo ver limite ou cotação, o que prefere?"
 
 
 def test_ambiguous_intent_uses_llm_then_specialist_rewriting(client: Client) -> None:
@@ -852,3 +853,15 @@ def test_clear_routed_text_never_triggers_understanding(client: Client) -> None:
     assert state.intent is Intent.LIMIT_INCREASE
     assert "limite total" in turn.reply.casefold()
     assert all("entender o turno" not in str(call[0].content) for call in llm.calls)
+
+
+def test_credential_requests_are_never_rewritten(client: Client) -> None:
+    """Formato de CPF e nascimento e contrato com o cliente e com o parser."""
+    llm = RecordingLlm({"reply": "Me passa aí seus documentos, por favor?"})
+    harness = build_harness(client, llm)
+    state = ConversationState()
+
+    turn = harness.service.handle_turn(state, (), "quero ver meu limite")
+
+    assert "informe seu CPF com 11 dígitos" in turn.reply
+    assert llm.calls == []

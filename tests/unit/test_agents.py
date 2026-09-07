@@ -930,9 +930,10 @@ def test_triage_keeps_ambiguous_intent_in_triage(client: Client) -> None:
     assert state.active_agent is Agent.TRIAGE
 
 
-def test_humanization_does_not_call_llm_for_triage(client: Client) -> None:
+def test_humanization_reaches_the_triage_conversation(client: Client) -> None:
+    """A triagem conversa como os demais: a fala dela tambem e redigida."""
     state = ConversationState(authenticated_client=client)
-    llm = RecordingLlm({"reply": "Texto alterado."})
+    llm = RecordingLlm({"reply": "Consigo ver limite ou cotação, o que prefere?"})
     canonical = "Posso ajudar com limite ou cotação?"
 
     reply = humanize_reply(
@@ -945,8 +946,16 @@ def test_humanization_does_not_call_llm_for_triage(client: Client) -> None:
         user_text="preciso resolver outra coisa",
     )
 
-    assert reply == canonical
-    assert llm.calls == []
+    assert reply == "Consigo ver limite ou cotação, o que prefere?"
+    assert len(llm.calls) == 1
+
+
+def test_credential_replies_are_marked_as_verbatim() -> None:
+    """O grafo usa este conjunto para nao mandar formato de credencial ao LLM."""
+    from banco_agil.agents.triage import VERBATIM_TRIAGE_REPLIES
+
+    assert any("11 dígitos" in reply for reply in VERBATIM_TRIAGE_REPLIES)
+    assert any("DD/MM/AAAA" in reply for reply in VERBATIM_TRIAGE_REPLIES)
 
 
 def test_authentication_repository_failure_returns_controlled_reply() -> None:

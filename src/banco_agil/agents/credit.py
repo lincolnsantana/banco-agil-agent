@@ -15,6 +15,7 @@ from banco_agil.agents._shared import (
     is_help_request,
     normalized_text,
 )
+from banco_agil.agents.knowledge import explanation_for_pending_step
 from banco_agil.agents.state import ConversationState
 from banco_agil.agents.understanding import TurnContext, resolve_context
 from banco_agil.domain.enums import Agent, CreditRequestStatus, Intent
@@ -22,6 +23,7 @@ from banco_agil.domain.exceptions import DomainError, RepositoryError
 from banco_agil.domain.models import CreditLimitResult, LimitIncreaseResult
 from banco_agil.integrations.llm import StructuredLlm
 from banco_agil.services.credit import CreditService
+from banco_agil.services.knowledge import KnowledgeService
 from banco_agil.tools.banking import get_credit_limit, request_limit_increase
 
 
@@ -30,6 +32,7 @@ def handle_credit(
     user_text: str,
     service: CreditService,
     *,
+    knowledge: KnowledgeService | None = None,
     context: TurnContext | None = None,
     llm: StructuredLlm | None = None,
     turn_id: str = "",
@@ -77,6 +80,18 @@ def handle_credit(
         )
 
     requested_limit = _parse_money(user_text)
+    if requested_limit is None and knowledge is not None:
+        # Duvida sobre o proprio pedido e respondida antes de virar recusa ou
+        # esclarecimento: a pergunta do passo volta no fim da resposta.
+        doubt_reply = explanation_for_pending_step(
+            user_text,
+            knowledge,
+            state.authenticated_client,
+            "Qual limite total você gostaria de ter?",
+            default_topic="score_defines_limit",
+        )
+        if doubt_reply is not None:
+            return doubt_reply
     if requested_limit is None:
         change = context.flow_change(user_text, Intent.LIMIT_INCREASE)
         if change is not None:

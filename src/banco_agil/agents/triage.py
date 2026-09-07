@@ -31,6 +31,40 @@ from banco_agil.integrations.llm import StructuredLlm
 from banco_agil.services.authentication import AuthenticationService
 from banco_agil.tools.banking import authenticate_client, validate_client_cpf
 
+# Pedem credencial num formato exato, ou informam falha na validacao. Sao
+# contrato com o cliente e com o parser que le a resposta dele, entao nunca
+# passam pela redacao do modelo: uma reescrita poderia trocar "DD/MM/AAAA" por
+# outra forma e o cliente responderia no formato errado.
+_CPF_REQUEST = (
+    "Antes de continuar, precisamos validar alguns dados para proteger seu "
+    "atendimento. Por favor, informe seu CPF com 11 dígitos."
+)
+_CPF_INVALID = "O CPF informado é inválido. Digite novamente seu CPF com 11 dígitos."
+_CPF_CHECK_UNAVAILABLE = (
+    "Não foi possível validar o CPF agora. Tente novamente mais tarde."
+)
+_BIRTH_DATE_REQUEST = (
+    "CPF localizado. Para concluir a autenticação, informe sua data de "
+    "nascimento no formato DD/MM/AAAA."
+)
+_AUTH_CHECK_UNAVAILABLE = (
+    "Não foi possível validar os dados agora. Tente novamente mais tarde."
+)
+_AUTH_RETRY = (
+    "Não foi possível validar os dados informados. Vamos tentar novamente: "
+    "informe seu CPF com 11 dígitos."
+)
+VERBATIM_TRIAGE_REPLIES = frozenset(
+    {
+        _CPF_REQUEST,
+        _CPF_INVALID,
+        _CPF_CHECK_UNAVAILABLE,
+        _BIRTH_DATE_REQUEST,
+        _AUTH_CHECK_UNAVAILABLE,
+        _AUTH_RETRY,
+    }
+)
+
 
 def handle_triage(
     state: ConversationState,
@@ -225,10 +259,7 @@ def _handle_authentication(
 ) -> str:
     if state.pending_cpf is None:
         if not re.fullmatch(r"[\d.\-\s]+", user_text.strip()):
-            return (
-                "Antes de continuar, precisamos validar alguns dados para proteger "
-                "seu atendimento. Por favor, informe seu CPF com 11 dígitos."
-            )
+            return _CPF_REQUEST
         try:
             cpf_result = CpfValidationResult.model_validate(
                 validate_client_cpf.invoke(
@@ -236,7 +267,7 @@ def _handle_authentication(
                 )
             )
         except RepositoryError:
-            return "Não foi possível validar o CPF agora. Tente novamente mais tarde."
+            return _CPF_CHECK_UNAVAILABLE
         if cpf_result.should_end:
             end_conversation(state, EndReason.AUTHENTICATION_FAILURES)
             return (
@@ -244,13 +275,8 @@ def _handle_authentication(
                 "Atendimento encerrado."
             )
         if not cpf_result.valid:
-            return (
-                "O CPF informado é inválido. Digite novamente seu CPF com 11 dígitos."
-            )
-        return (
-            "CPF localizado. Para concluir a autenticação, informe sua data de "
-            "nascimento no formato DD/MM/AAAA."
-        )
+            return _CPF_INVALID
+        return _BIRTH_DATE_REQUEST
 
     try:
         result = AuthenticationResult.model_validate(
@@ -264,7 +290,7 @@ def _handle_authentication(
             )
         )
     except RepositoryError:
-        return "Não foi possível validar os dados agora. Tente novamente mais tarde."
+        return _AUTH_CHECK_UNAVAILABLE
     if result.authenticated:
         return "Dados confirmados. Como posso ajudar hoje?"
 
@@ -276,10 +302,7 @@ def _handle_authentication(
             "Não foi possível validar os dados após três tentativas. "
             "Atendimento encerrado."
         )
-    return (
-        "Não foi possível validar os dados informados. Vamos tentar novamente: "
-        "informe seu CPF com 11 dígitos."
-    )
+    return _AUTH_RETRY
 
 
 # Credencial nao e pedido: CPF e nascimento sao so digitos e separadores.

@@ -33,7 +33,7 @@ from banco_agil.agents.router import (
     route_entry,
 )
 from banco_agil.agents.state import ConversationState
-from banco_agil.agents.triage import handle_triage
+from banco_agil.agents.triage import VERBATIM_TRIAGE_REPLIES, handle_triage
 from banco_agil.agents.understanding import TurnContext
 from banco_agil.domain.enums import Agent
 from banco_agil.domain.exceptions import RepositoryError
@@ -193,7 +193,11 @@ def build_graph(dependencies: GraphDependencies) -> ConversationGraph:
         # Texto que a triagem roteou nao pode ser relido pelo especialista como
         # troca de fluxo; ele so aproveita valor, moeda ou esclarecimento.
         context.text_classified = reply == HANDOFF_REPLY
-        update = _handler_update(state, reply, Agent.TRIAGE, context)
+        # Sem agente respondente a redacao nao roda: e assim que os textos de
+        # credencial atravessam intactos, enquanto o resto da triagem ganha a
+        # fala do modelo.
+        agent = None if reply in VERBATIM_TRIAGE_REPLIES else Agent.TRIAGE
+        update = _handler_update(state, reply, agent, context)
         resumed_text = _resumed_request(state["conversation"])
         if resumed_text is not None:
             # O especialista assume o turno agora; sem esta troca ele leria a
@@ -207,6 +211,7 @@ def build_graph(dependencies: GraphDependencies) -> ConversationGraph:
             state["conversation"],
             state["user_text"],
             dependencies.credit,
+            knowledge=dependencies.knowledge,
             context=context,
         )
         return _handler_update(state, reply, Agent.CREDIT, context)
@@ -217,6 +222,7 @@ def build_graph(dependencies: GraphDependencies) -> ConversationGraph:
             state["conversation"],
             state["user_text"],
             dependencies.credit_interview,
+            knowledge=dependencies.knowledge,
             context=context,
         )
         return _handler_update(state, reply, Agent.CREDIT_INTERVIEW, context)
@@ -227,6 +233,7 @@ def build_graph(dependencies: GraphDependencies) -> ConversationGraph:
             state["conversation"],
             state["user_text"],
             dependencies.exchange,
+            knowledge=dependencies.knowledge,
             context=context,
         )
         return _handler_update(state, reply, Agent.EXCHANGE, context)
@@ -292,7 +299,7 @@ def _resumed_request(conversation: ConversationState) -> str | None:
 
 
 def _handler_update(
-    state: GraphState, reply: str, agent: Agent, context: TurnContext
+    state: GraphState, reply: str, agent: Agent | None, context: TurnContext
 ) -> GraphUpdate:
     return {
         "conversation": state["conversation"],

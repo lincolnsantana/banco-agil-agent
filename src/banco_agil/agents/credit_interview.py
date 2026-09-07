@@ -14,6 +14,7 @@ from banco_agil.agents._shared import (
     parse_confirmation,
     parse_flow_change,
 )
+from banco_agil.agents.knowledge import explanation_for_pending_step
 from banco_agil.agents.state import ConversationState, CreditInterviewDraft
 from banco_agil.agents.understanding import (
     TurnContext,
@@ -29,6 +30,7 @@ from banco_agil.services.credit_interview import (
     InterviewField,
     InterviewProgress,
 )
+from banco_agil.services.knowledge import KnowledgeService
 from banco_agil.tools.banking import update_credit_score
 
 _DIGIT_PATTERN = re.compile(r"\d")
@@ -63,6 +65,7 @@ def handle_credit_interview(
     user_text: str,
     service: CreditInterviewService,
     *,
+    knowledge: KnowledgeService | None = None,
     context: TurnContext | None = None,
     llm: StructuredLlm | None = None,
     turn_id: str = "",
@@ -96,11 +99,37 @@ def handle_credit_interview(
         return _cancel_interview(state)
 
     current_field = _current_field(state)
+    doubt_reply = _answer_doubt(user_text, knowledge, state, current_field)
+    if doubt_reply is not None:
+        return doubt_reply
     try:
         progress = service.collect_answer(state, user_text)
     except DomainError:
         return _handle_invalid_answer(state, user_text, service, context, current_field)
     return _advance(state, service, progress)
+
+
+def _answer_doubt(
+    user_text: str,
+    knowledge: KnowledgeService | None,
+    state: ConversationState,
+    current_field: InterviewField,
+) -> str | None:
+    """Responde duvida sobre a coleta e repete a pergunta do passo.
+
+    Vem antes de qualquer leitura da resposta: sem isto o texto chegava ao LLM
+    como resposta invalida e podia ser lido como desistencia, descartando a
+    entrevista de quem so queria entender por que o dado e pedido.
+    """
+    if knowledge is None:
+        return None
+    return explanation_for_pending_step(
+        user_text,
+        knowledge,
+        state.authenticated_client,
+        _question(current_field),
+        default_topic="interview_data_use",
+    )
 
 
 def _handle_invalid_answer(

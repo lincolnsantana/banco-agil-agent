@@ -16,6 +16,7 @@ from banco_agil.agents._shared import (
     is_help_request,
     normalized_text,
 )
+from banco_agil.agents.knowledge import explanation_for_pending_step
 from banco_agil.agents.state import ConversationState
 from banco_agil.agents.understanding import TurnContext, resolve_context
 from banco_agil.domain.enums import Agent, Intent
@@ -23,6 +24,7 @@ from banco_agil.domain.exceptions import IntegrationError
 from banco_agil.domain.models import ExchangeRateResult
 from banco_agil.integrations.llm import StructuredLlm
 from banco_agil.services.exchange import ExchangeService
+from banco_agil.services.knowledge import KnowledgeService
 from banco_agil.tools.banking import get_exchange_rate
 
 _BRASILIA_TZ = ZoneInfo("America/Sao_Paulo")
@@ -96,6 +98,7 @@ def handle_exchange(
     user_text: str,
     service: ExchangeService,
     *,
+    knowledge: KnowledgeService | None = None,
     context: TurnContext | None = None,
     llm: StructuredLlm | None = None,
     turn_id: str = "",
@@ -123,6 +126,16 @@ def handle_exchange(
         return _CURRENCY_LIST_REPLY
 
     pair = _parse_currency_pair(user_text)
+    if pair is None and knowledge is not None:
+        doubt_reply = explanation_for_pending_step(
+            user_text,
+            knowledge,
+            state.authenticated_client,
+            "Qual moeda você quer consultar?",
+            default_topic="exchange_source",
+        )
+        if doubt_reply is not None:
+            return doubt_reply
     if pair is None:
         change = context.flow_change(user_text, Intent.EXCHANGE_RATE)
         if change is not None:
