@@ -78,48 +78,44 @@ GREETING_REPLY = (
     "atualizar seu score pela entrevista ou ver a cotação de moedas. O que você "
     "prefere?"
 )
-# Frases inteiras: "oi" cumprimenta, mas "oi, qual meu limite" e um pedido e
-# nao pode virar saudacao.
-_GREETINGS = frozenset(
+# Cumprimento e reconhecido por vocabulario, e nao por frase fixa: as
+# combinacoes sao muitas ("oi", "oi bom dia", "ola, tudo bem"). Vale so quando
+# TODA palavra e de cumprimento, entao "oi, qual meu limite" segue sendo pedido.
+_GREETING_WORDS = frozenset(
     {
         "oi",
         "ola",
         "opa",
-        "e ai",
-        "eai",
         "hey",
-        "bom dia",
-        "boa tarde",
-        "boa noite",
-        "tudo bem",
-        "tudo bom",
-        "oi tudo bem",
-        "ola tudo bem",
-        "oi tudo bom",
-        "bom dia tudo bem",
-        "boa tarde tudo bem",
-        "boa noite tudo bem",
+        "eai",
+        "e",
+        "ai",
+        "salve",
+        "bom",
+        "boa",
+        "dia",
+        "tarde",
+        "noite",
+        "tudo",
+        "bem",
     }
 )
 
 
 def is_greeting(user_text: str) -> bool:
-    """Reconhece cumprimento isolado, sem pedido junto.
-
-    A pontuacao interna some antes da comparacao: "oi, tudo bem?" e o mesmo
-    cumprimento que "oi tudo bem". O casamento segue sendo da frase inteira,
-    entao "oi, qual e meu limite" continua sendo um pedido.
-    """
-    normalized = normalized_text(user_text)
-    sem_pontuacao = " ".join(re.sub(r"[.,!?;:'\"()\[\]-]", " ", normalized).split())
-    return sem_pontuacao in _GREETINGS
+    """Reconhece cumprimento isolado, sem pedido junto."""
+    palavras = _WORD_PATTERN.findall(normalized_text(user_text))
+    return bool(palavras) and all(palavra in _GREETING_WORDS for palavra in palavras)
 
 
-HELP_REPLY = (
-    "Claro! Posso consultar seu limite de crédito, solicitar um aumento de "
-    "limite, conduzir a entrevista de crédito para revisar seu score e "
-    "consultar cotações de moedas como dólar e euro. Por onde quer começar?"
+# A mesma oferta serve para a pergunta de ajuda e para a retomada apos a
+# autenticacao, que a apresenta sem o "Claro!" por vir depois da confirmacao.
+SERVICES_OFFER = (
+    "Posso consultar seu limite de crédito, solicitar um aumento de limite, "
+    "conduzir a entrevista de crédito para revisar seu score e consultar "
+    "cotações de moedas como dólar e euro. Por onde quer começar?"
 )
+HELP_REPLY = f"Claro! {SERVICES_OFFER}"
 
 _HELP_PHRASES = (
     "o que voce pode fazer",

@@ -350,6 +350,53 @@ def test_amount_asked_before_login_survives_authentication(tmp_path: Path) -> No
     assert "4.000,00" in replies[-1]
 
 
+@pytest.mark.parametrize(
+    ("abertura", "esperado"),
+    (
+        ("o que você faz?", "consultar seu limite"),
+        ("o que é score?", "score é a nota"),
+        ("quem é você?", "assistente virtual"),
+        ("por que preciso me autenticar?", "titular da conta"),
+    ),
+)
+def test_question_asked_before_login_is_answered_after_it(
+    tmp_path: Path, abertura: str, esperado: str
+) -> None:
+    """A pergunta da abertura e respondida, nao devolvida como outra pergunta."""
+    service = _build_service(_write_data_dir(tmp_path), FakeExchangeProvider())
+    state = ConversationState()
+
+    _, replies = _run(service, state, (), [abertura, "01234567890", "20/05/1990"])
+
+    assert esperado in replies[-1].casefold()
+    assert "como posso ajudar hoje" not in replies[-1].casefold()
+
+
+def test_explanation_asked_before_login_never_starts_the_interview(
+    tmp_path: Path,
+) -> None:
+    """Duvida na abertura nao pode virar entrevista depois da autenticacao."""
+    service = _build_service(_write_data_dir(tmp_path), FakeExchangeProvider())
+    state = ConversationState()
+
+    _, replies = _run(
+        service, state, (), ["o que é score?", "01234567890", "20/05/1990"]
+    )
+
+    assert state.active_agent is not Agent.CREDIT_INTERVIEW
+    assert "renda mensal" not in replies[-1].casefold()
+
+
+def test_greeting_before_login_only_offers_help_after_it(tmp_path: Path) -> None:
+    """Cumprimento nao e pedido guardado: nao ha o que responder depois."""
+    service = _build_service(_write_data_dir(tmp_path), FakeExchangeProvider())
+    state = ConversationState()
+
+    _, replies = _run(service, state, (), ["oi, bom dia", "01234567890", "20/05/1990"])
+
+    assert "como posso ajudar" in replies[-1].casefold()
+
+
 def test_missing_llm_asks_clarification(tmp_path: Path) -> None:
     service = _build_service(_write_data_dir(tmp_path), FakeExchangeProvider())
     state = ConversationState()

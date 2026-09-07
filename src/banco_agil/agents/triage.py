@@ -10,6 +10,7 @@ from banco_agil.agents._shared import (
     HANDOFF_REPLY,
     HELP_REPLY,
     RESUMABLE_INTENTS,
+    SERVICES_OFFER,
     agent_for_intent,
     apply_flow_change,
     classify_banking_request,
@@ -48,9 +49,26 @@ def handle_triage(
         return end_reply
 
     if not state.authenticated:
-        _remember_requested_intent(state, user_text)
-        return _handle_authentication(state, user_text, service)
+        _remember_request(state, user_text)
+        reply = _handle_authentication(state, user_text, service)
+        if not state.authenticated:
+            return reply
+        return _answer_remembered_request(state, context, reply)
 
+    return _handle_authenticated(state, user_text, context)
+
+
+def _handle_authenticated(
+    state: ConversationState,
+    user_text: str,
+    context: TurnContext,
+) -> str:
+    """Roteia a fala de um cliente já autenticado.
+
+    Separado do turno para poder ser reaplicado: o pedido feito antes da
+    autenticação passa por aqui quando ela conclui, com a mesma precedência de
+    como-fazer, cumprimento, ajuda, dúvida e operação.
+    """
     if state.pending_flow is not None and not _supersedes_pending_flow(
         user_text, state.pending_flow
     ):
@@ -248,7 +266,7 @@ def _handle_authentication(
     except RepositoryError:
         return "Não foi possível validar os dados agora. Tente novamente mais tarde."
     if result.authenticated:
-        return _resume_requested_intent(state)
+        return "Dados confirmados. Como posso ajudar hoje?"
 
     state.pending_cpf = None
     state.pending_birth_date = None
@@ -264,36 +282,55 @@ def _handle_authentication(
     )
 
 
-def _remember_requested_intent(state: ConversationState, user_text: str) -> None:
-    """Guarda o pedido feito antes da autenticacao, preservando o primeiro.
+# Credencial nao e pedido: CPF e nascimento sao so digitos e separadores.
+_CREDENTIAL_PATTERN = re.compile(r"[\d.\-/\s]+")
 
-    CPF e nascimento nao carregam intencao, entao as respostas de autenticacao
-    passam por aqui sem sobrescrever o que o cliente pediu na abertura.
+
+def _remember_request(state: ConversationState, user_text: str) -> None:
+    """Guarda a fala que abriu a conversa, para responder depois de autenticar.
+
+    Guarda o texto, e nao a intencao lida dele: pergunta, duvida e pedido de
+    ajuda tambem merecem resposta, e classificar aqui perderia essa diferenca.
+    Preserva a primeira fala, porque CPF e nascimento passam por aqui em
+    seguida. Credencial e cumprimento nao viram pedido: nao ha o que responder.
     """
-    if state.deferred_intent is not None:
+    if state.deferred_request is not None:
         return
-    intent = _deterministic_intent(user_text)
+    text = user_text.strip()
+    if not text or _CREDENTIAL_PATTERN.fullmatch(text) or is_greeting(text):
+        return
+    state.deferred_request = text
+    # So para o log: diz o que o cliente queria antes de se identificar.
+    intent = _deterministic_intent(text)
     if intent in RESUMABLE_INTENTS:
         state.deferred_intent = intent
-        state.deferred_request = user_text
 
 
-def _resume_requested_intent(state: ConversationState) -> str:
-    """Retoma o pedido anterior a autenticacao em vez de perguntar de novo.
+def _answer_remembered_request(
+    state: ConversationState,
+    context: TurnContext,
+    confirmation: str,
+) -> str:
+    """Responde, ja autenticado, a fala que abriu a conversa.
 
-    A resposta daqui e substituida pela do especialista quando ha pedido a
-    retomar: o grafo segue para ele no mesmo turno.
+    A fala volta a passar pela triagem autenticada. Quando ela aponta para um
+    especialista, o texto fica no estado: o grafo o entrega a ele neste mesmo
+    turno. Quando a propria triagem responde, a resposta sai aqui, precedida da
+    confirmacao dos dados.
     """
-    deferred = state.deferred_intent
-    if deferred is None:
-        state.deferred_request = None
-        return "Dados confirmados. Como posso ajudar hoje?"
-    # O texto fica no estado de proposito: o grafo o entrega ao especialista
-    # neste mesmo turno, no lugar da data de nascimento, e so entao o descarta.
     state.deferred_intent = None
-    state.intent = deferred
-    state.active_agent = agent_for_intent(deferred)
-    return "Dados confirmados. Vou retomar seu pedido."
+    request = state.deferred_request
+    if request is None:
+        return confirmation
+
+    reply = _handle_authenticated(state, request, context)
+    if state.active_agent is not Agent.TRIAGE:
+        return "Dados confirmados. Vou retomar seu pedido."
+
+    state.deferred_request = None
+    if reply == HELP_REPLY:
+        return f"Dados confirmados. {SERVICES_OFFER}"
+    return f"Dados confirmados. {reply}"
 
 
 def _deterministic_intent(user_text: str) -> Intent | None:

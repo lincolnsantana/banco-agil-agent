@@ -276,11 +276,13 @@ def build_graph(dependencies: GraphDependencies) -> ConversationGraph:
 def _resumed_request(conversation: ConversationState) -> str | None:
     """Consome o texto do pedido que acabou de ser retomado, se houver.
 
-    Enquanto a autenticacao corre, `deferred_intent` segue preenchido e o texto
-    fica guardado. Quando a triagem retoma o pedido ela zera a intencao, e e
-    esse par - intencao vazia com texto presente - que marca o turno da entrega.
+    O sinal e o especialista ja estar no comando: enquanto a autenticacao corre,
+    e quando a triagem responde sozinha, o agente ativo continua sendo ela e o
+    texto guardado nao interessa a ninguem.
     """
-    if conversation.deferred_intent is not None:
+    if conversation.active_agent is Agent.TRIAGE:
+        # Ainda autenticando, ou a propria triagem respondeu: ninguem espera o
+        # texto guardado.
         return None
     texto = conversation.deferred_request
     if texto is None:
