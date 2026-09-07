@@ -10,7 +10,7 @@
   <img alt="HTTPX como cliente REST" src="https://img.shields.io/badge/HTTPX-cliente_REST-2C5BB4">
   <img alt="AwesomeAPI como fonte das cotações" src="https://img.shields.io/badge/AwesomeAPI-cotações-0A7EA4">
   <img alt="SQLite na auditoria" src="https://img.shields.io/badge/SQLite-auditoria-003B57?logo=sqlite&logoColor=white">
-  <img alt="Pytest com 584 testes" src="https://img.shields.io/badge/Pytest-584_testes-0A9EDC?logo=pytest&logoColor=white">
+  <img alt="Pytest com 624 testes" src="https://img.shields.io/badge/Pytest-624_testes-0A9EDC?logo=pytest&logoColor=white">
   <img alt="Ruff no lint e no format" src="https://img.shields.io/badge/Ruff-lint_e_format-D7FF64?logo=ruff&logoColor=black">
   <img alt="Mypy em modo strict" src="https://img.shields.io/badge/Mypy-strict-2A6DB2">
   <img alt="Docker e Docker Compose" src="https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white">
@@ -20,38 +20,28 @@
 
 **Teste aqui:** <https://banco-agil-agent.streamlit.app/>
 
-O Banco Ágil é um banco digital fictício cujo atendimento ao cliente é feito por
-quatro especialistas internos de IA, apresentados ao cliente como uma única
-conversa contínua em Streamlit:
+O Banco Ágil é um banco digital fictício. O atendimento é feito por
+especialistas de IA com escopos separados, que o cliente enxerga como uma única
+conversa em Streamlit:
 
-- **Triagem**: explica a validação, verifica imediatamente o CPF no cadastro e
-  pede novamente quando ele é inválido. Para CPF localizado, solicita nascimento
-  em `DD/MM/AAAA` e só então autentica; encerra após a terceira falha.
-- **Crédito**: consulta o limite atual e processa pedidos de aumento. Situa o
-  pedido no limite que o cliente tem hoje, decide pela faixa de score, registra
-  todo pedido em `solicitacoes_aumento_limite.csv` e, quando aprovado, atualiza
-  o limite em `clientes.csv`.
-- **Entrevista de Crédito**: com consentimento, coleta 5 dados financeiros, um
-  por vez, recalcula o score por fórmula determinística, atualiza
-  `clientes.csv` e devolve ao Crédito para reanálise.
-- **Câmbio**: consulta a cotação atual via API REST/JSON (AwesomeAPI), informa
-  valor e horário da última atualização e fecha convidando a outro serviço;
-  nunca inventa valor nem recomenda investimento.
-
-Além dos quatro exigidos pelo desafio, um quinto especialista interno responde
-**dúvidas sobre o próprio atendimento** (por que um pedido foi recusado, o que é
-score, se há cobrança) a partir de um catálogo curado, sem calcular nem decidir
-nada.
+- **Triagem** — autentica por CPF e nascimento e encaminha ao especialista certo.
+- **Crédito** — mostra o limite atual e decide pedidos de aumento pela faixa de
+  score.
+- **Entrevista de Crédito** — com consentimento, coleta cinco dados financeiros,
+  recalcula o score e devolve o pedido para nova análise.
+- **Câmbio** — consulta a cotação do momento numa API pública, sem inventar
+  valor nem recomendar investimento.
+- **Conhecimento** — acréscimo aos quatro exigidos pelo desafio: explica o
+  próprio atendimento a partir de um catálogo curado, sem calcular nem decidir.
 
 ![Demonstração do atendimento: da tela inicial ao chat, autenticação por CPF e
 nascimento, pedido de aumento situado no limite atual, aprovação de R$ 2.500,00
 para R$ 4.500,00 e o painel de perguntas rápidas acima do campo de
 texto](docs/demo.gif)
 
-
-Tudo roda offline nos testes (mocks + fixtures temporárias). Nenhuma credencial
-real é necessária; sem chave do provedor, os fluxos determinísticos funcionam e
-intenções ambíguas recebem pedido de esclarecimento.
+A aplicação roda sem credencial nenhuma: sem chave do provedor, as decisões e os
+fluxos são os mesmos, e só o texto das respostas deixa de variar. Os testes rodam
+offline, sobre fixtures temporárias.
 
 ## Estrutura do projeto
 
@@ -108,48 +98,82 @@ intenções ambíguas recebem pedido de esclarecimento.
 
 ## Arquitetura, agentes, fluxos e manipulação de dados
 
+### O caminho de uma mensagem
+
 ```text
-UI (app.py) -> ConversationService -> Graph (LangGraph) -> Tools -> Services
-Services -> protocolos de repository/integration -> CSV / SQLite / HTTP
+Cliente
+   │
+   ▼
+UI ........................ app.py            telas, sessão e máscara de CPF
+   │
+   ▼
+ConversationService ....... services/         um turno: estado + fala → resposta
+   │
+   ▼
+Grafo ..................... agents/graph.py   escolhe o especialista do turno
+   │
+   ▼
+Nós ....................... agents/*.py       Triagem, Crédito, Entrevista,
+   │                                          Câmbio e Conhecimento
+   ▼
+Tools ..................... tools/banking.py  as sete operações permitidas
+   │
+   ▼
+Serviços .................. services/*.py     a regra de negócio, sem framework
+   │
+   ▼
+Repositórios e integrações                    CSV, SQLite e HTTP
 ```
 
-- **UI** (`app.py`): tela inicial com campo central e quatro atalhos, transição
-  animada para o chat, conversa que abre pela mensagem do cliente e responde com
-  as boas-vindas e o pedido de CPF, painel com três perguntas rápidas acima do
-  campo de texto sempre que um especialista conclui o serviço, sessão e histórico
-  entre reruns, máscara de CPF/nascimento na exibição, erros recuperáveis
-  genéricos, atalho de volta à tela inicial e botão de novo atendimento quando
-  a conversa encerra. Sem regra de negócio.
-- **Grafo** (`agents/router.py`, `agents/graph.py`): entrada exige autenticação;
-  triagem continua no mesmo turno para o especialista; entrevista concluída
-  retorna ao crédito para reanálise; `MAX_HANDLER_STEPS=2` + `recursion_limit=8`
-  impedem loops; histórico limitado às 6 mensagens recentes.
-- **Nós** (`agents/triage.py`, `credit.py`, `credit_interview.py`,
-  `exchange.py`): autenticação e rotas claras são determinísticas (parser
-  primeiro; `alterar/mudar/ajustar/modificar limite` é aumento, `score` /
-  `entrevista` é entrevista); intenção pós-autenticação ambígua usa o Groq
-  para classificar; Crédito, Entrevista e Câmbio podem ter a resposta final
-  redigida pelo Groq, com fallback canônico. Em qualquer especialista, texto
-  que não é resposta ao passo atual passa por um parser de recusa e de pedido
-  novo e, se preciso, pelo Groq: "não quero mais aumento, quero o dólar" leva
-  o cliente ao câmbio no mesmo turno em vez de repetir "qual limite?".
-- **Prompts** (`prompts/`): um system message = global + especialista ativo +
-  estado mínimo sanitizado (sem PII, < 500 caracteres); só as tools do
-  especialista ativo são expostas; IDs/versões testados contra `PROMPTS.md`.
-- **Tools** (`tools/banking.py`): `validate_client_cpf`, `authenticate_client`,
-  `get_credit_limit`, `request_limit_increase`, `update_credit_score`,
-  `get_exchange_rate`, `end_service`. Estado e serviços são injetados
-  (`InjectedToolArg`) e ficam
-  fora do schema visível ao LLM; cada tool protegida revalida autenticação e o
-  CPF vem sempre do estado confiável.
-- **Dados**: `clientes.csv`, `score_limite.csv` (faixas 0–1000 sem lacunas),
-  `solicitacoes_aumento_limite.csv` (uma linha por pedido:
-  `pendente` → `aprovado`/`rejeitado`); escrita sob `filelock` + arquivo
-  temporário + `os.replace`; `Decimal` e timestamps UTC ISO 8601.
-- **Auditoria** (`repositories/audit_sqlite.py`, `observability/`): eventos de
-  turno (início, transição, erro, fim) em SQLite local e métricas de LLM
-  (modelo, versão de prompt, latência, tokens); nunca contém PII; falha de
-  auditoria nunca quebra o atendimento.
+Cada camada só conhece a de baixo, e o domínio não importa framework nenhum.
+
+### Quem faz o quê
+
+| Camada | Onde | Responsabilidade |
+| --- | --- | --- |
+| UI | `app.py` | Desenha as telas, guarda a sessão entre reruns e mascara CPF e nascimento na exibição. Nenhuma regra de negócio. |
+| Grafo | `agents/graph.py`, `agents/router.py` | Liga os nós e impõe os limites do turno. |
+| Nós | `agents/triage.py`, `credit.py`, `credit_interview.py`, `exchange.py`, `knowledge.py` | Um especialista por assunto. Coordenam estado e tools; não tocam em arquivo. |
+| Prompts | `prompts/` | Um system message por turno: global + especialista ativo + estado mínimo sem PII. Versionados e testados contra `PROMPTS.md`. |
+| Tools | `tools/banking.py` | As sete operações do atendimento. Estado e serviços são injetados e ficam fora do schema visível ao modelo; o CPF vem sempre do estado confiável. |
+| Serviços | `services/` | Onde a decisão acontece: autenticação, faixa de score, cálculo do score, cotação. |
+| Repositórios | `repositories/` | CSV do negócio e SQLite da auditoria, atrás de protocolos. |
+
+### Como um turno é decidido
+
+Toda mensagem passa pelas mesmas verificações, nesta ordem:
+
+1. Pedido de encerramento, que vale em qualquer nó e a qualquer momento e por
+   isso é a primeira coisa que cada especialista checa.
+2. Autenticação. Enquanto o cliente não se identifica, só a triagem responde. O
+   que ele pediu antes disso fica guardado e é respondido quando a autenticação
+   termina.
+3. Resposta ao passo em andamento, quando existe um: o valor do aumento, a
+   moeda, o item da entrevista.
+4. Rota, quando não há passo pendente. O parser tenta primeiro; se o texto
+   continuar ambíguo, o Groq classifica, e o que ele entende precisa estar
+   escrito na fala do cliente.
+
+Dois limites protegem o turno: `MAX_HANDLER_STEPS=2` e `recursion_limit=8`
+evitam que os nós fiquem se chamando, e o modelo nunca recebe mais do que as
+seis mensagens mais recentes.
+
+Uma pergunta no meio de um passo não conta como resposta nem como desistência. O
+catálogo explica, o especialista repete a pergunta pendente e o que já foi
+coletado continua lá.
+
+### Onde os dados ficam
+
+| Arquivo | Conteúdo | Quem escreve |
+| --- | --- | --- |
+| `data/clientes.csv` | CPF, nascimento, limite e score | aprovação de aumento e entrevista |
+| `data/score_limite.csv` | faixas de 0 a 1000, sem lacunas | ninguém: só leitura |
+| `data/solicitacoes_aumento_limite.csv` | uma linha por pedido, `pendente` → `aprovado`/`rejeitado` | crédito |
+| `var/*.db` (opcional) | eventos do turno e métricas de LLM, sem PII | serviço de conversa |
+
+Toda escrita passa por `filelock`, arquivo temporário e `os.replace`, então uma
+falha no meio não deixa CSV pela metade. Valores são `Decimal` e horários são
+UTC em ISO 8601. Falha de auditoria nunca interrompe o atendimento.
 
 ## Tutorial de execução e testes
 
@@ -295,30 +319,27 @@ status. Gere um token gratuito em <https://awesomeapi.com.br> e configure
 
 ### Com e sem chave do provedor
 
-Sem `BANCO_AGIL_GROQ_API_KEY`, a aplicação roda em **modo determinístico**: nesse
-modo, nenhuma chamada ao provedor é realizada. Com Groq ativo, cada especialista cria
-primeiro uma resposta canônica a partir das regras e tools em Python. O modelo
-gera a apresentação inicial e redige as respostas de Crédito, Entrevista e
-Câmbio a partir do canônico com fatos mascarados, sem alterar fatos, valores ou
-decisões. Junto do canônico ele recebe a pergunta do cliente — sem CPF,
-nascimento, números ou caracteres de estrutura — para reconhecer o pedido e
-responder com as palavras de quem perguntou; a pergunta orienta o tom, nunca o
-conteúdo, e a saída só é aceita se preservar marcadores, números, decisão e
-pergunta do canônico. Todo nó usa parser determinístico primeiro e só classifica
-via Groq quando o texto continua ambíguo, seja a intenção na triagem, seja uma
-recusa ou troca de assunto no meio de um fluxo; cada turno faz no máximo duas
-chamadas, entre classificação e redação: quando a redação devolve o texto
-validado sem mudança nenhuma, a segunda chamada cobra a reescrita, porque
-repetir a frase de sempre é o mesmo que não redigir.
+Sem `BANCO_AGIL_GROQ_API_KEY` nenhuma chamada ao provedor acontece, e o
+atendimento funciona igual. O que muda é só a escrita:
+
+| | Sem chave | Com chave |
+| --- | --- | --- |
+| Decisões, valores e rotas claras | idênticas | idênticas |
+| Texto das respostas | fixo | escrito pelo modelo, no tom do cliente |
+| Frase ambígua | pede esclarecimento | é interpretada e validada em Python |
+
+O mecanismo está em [Uso do LLM](#uso-do-llm).
 
 ### Roteiro na interface
 
-Na tela inicial, clique em **Visualizar limite** (ou digite o
-pedido no campo central) → informe o CPF → informe o nascimento →
-`qual é meu limite?`
-(`R$ 2.500,00`) → `quero aumentar meu limite` → `4000` → responda `encerrar`
-para finalizar; o botão **Iniciar novo atendimento** começa outro do zero.
-Demonstração completa em `docs/DEMO.md`; homologação em `docs/TEST_PLAN.md`.
+Na tela inicial, clique em **Visualizar limite** ou digite o pedido no campo
+central. Depois:
+
+`CPF` → `nascimento` → `qual é meu limite?` (responde `R$ 2.500,00`) →
+`quero aumentar meu limite` → `4000` (aprovado) → `encerrar`
+
+O botão **Iniciar novo atendimento** começa outro do zero. Roteiro completo em
+`docs/DEMO.md`; homologação em `docs/TEST_PLAN.md`.
 
 ### Testes e validação
 
@@ -356,100 +377,102 @@ chaves e sem serviços externos.
 | Concorrência | filelock + `os.replace` | Escrita atômica em arquivos mutáveis |
 | Qualidade | Ruff + Mypy estrito + Pytest + RESPX | Contrato de cada tarefa do projeto |
 
-**Uso do LLM**: o Groq gera as boas-vindas por um prompt isolado, sem estado,
-histórico ou tools. Na triagem, autenticação, encerramento e rotas claras usam
-zero chamada; texto pós-autenticação ambíguo usa uma chamada de classificação,
-com fallback determinístico. Dentro de um fluxo, texto que não é valor, moeda,
-item da entrevista ou confirmação passa pelo parser de recusa e, se ele não
-resolver, por uma leitura do turno (`understanding`) que traz recusa, pedido
-novo, valor ("uns 8 mil"), par de moedas, respostas da entrevista ditas de uma
-vez, tópico de dúvida e uma pergunta de esclarecimento. Cada campo só vale
-depois de aterrado no texto do cliente: o Groq entende, o Python decide. Essa
-leitura é feita uma vez por turno e compartilhada pelos nós. Crédito, Entrevista e Câmbio usam uma
-chamada por turno para redigir o texto canônico com fatos mascarados (até duas
-no turno com classificação), recebendo junto a pergunta do cliente com PII
-mascarada para responderem no tom de quem perguntou. CPF, data, números,
-sim/não, cálculos, encerramento e autenticação continuam determinísticos. Temperatura `0.5`, saída
-de 500 tokens e timeout de 30 s; saída inválida ou falha preserva integralmente
-a resposta canônica.
+### Uso do LLM
 
-**Conhecimento**: perguntas sobre o atendimento (por que um pedido foi recusado,
-o que é score, se há cobrança, de onde vem a cotação) são respondidas a partir de
-um catálogo curado em `src/banco_agil/knowledge/catalog.py`, recuperado por
-sobreposição de termos com `BaseRetriever` do LangChain; quando os termos não
-bastam, o Groq aponta o tópico e o código confere que ele existe. A resposta
-ganha fatos determinísticos do cliente (score atual e teto da faixa, lidos do
-repositório) entre a explicação e a pergunta final. O catálogo explica
-política e nunca calcula: limite, score e cotação continuam vindo das tools. Sem
-correspondência, o atendimento admite que não sabe em vez de inventar.
+O modelo escolhe palavras e desempata leituras ambíguas. Ele nunca decide um
+fato. São três tarefas, cada uma com sua guarda:
 
-**Limitações**: sem banco vetorial nem embeddings (a recuperação é por termo sobre
-um catálogo pequeno e curado, o que dispensa índice vetorial e mantém o resultado
-auditável); câmbio exige rede; LLM nunca decide aprovação, limite, score ou
-cotação, apenas sugere a rota ambígua e redige o canônico.
+| Tarefa | O que o modelo faz | O que o impede de errar |
+| --- | --- | --- |
+| Boas-vindas | escreve a saudação de abertura | prompt isolado, sem estado, histórico ou tools |
+| Entendimento | lê um turno ambíguo e devolve estrutura: intenção, valor, moeda, respostas da entrevista | cada campo precisa estar sustentado no texto do cliente, ou é descartado |
+| Redação | escreve a fala final a partir do texto já validado | os fatos vão mascarados; marcadores, números e decisão são conferidos na volta |
 
-A redação pelo modelo depende do orçamento de tokens. O `.env.example` traz 500
-tokens, calibrados para o `qwen/qwen3.8-27b`. Modelos de raciocínio, como os
-`gpt-oss`, gastam tokens pensando antes de emitir a saída estruturada: com
-orçamento curto, ou com a conta perto do limite por minuto, o provedor devolve
-geração vazia e a chamada falha.
+Autenticação, encerramento, cálculo de score, faixa de limite e rotas claras não
+passam pelo modelo. São no máximo duas chamadas por turno, temperatura `0.5`,
+500 tokens e timeout de 30 s. Qualquer falha ou saída fora das guardas preserva
+a resposta determinística.
 
-Provedores também aposentam modelos, e a falha é silenciosa: o atendimento segue
-correto, com a resposta canônica, mas sem variação nenhuma na escrita. **Se as
-respostas parecerem sempre iguais, esse é o primeiro lugar a olhar.** Confirme
-que o modelo configurado ainda existe na sua conta:
+### Conhecimento
 
-```bash
-curl -s https://api.groq.com/openai/v1/models \
-  -H "Authorization: Bearer $BANCO_AGIL_GROQ_API_KEY" | grep '"id"'
-```
+Dúvidas sobre o atendimento vêm de um catálogo curado em
+`src/banco_agil/knowledge/catalog.py`, recuperado por sobreposição de termos com
+`BaseRetriever` do LangChain. Quando os termos não bastam, o Groq aponta o tópico
+e o código confere que ele existe.
+
+A explicação ganha os fatos do cliente lidos do repositório, como o score atual e
+o teto da faixa. O catálogo explica política e nunca calcula: limite, score e
+cotação continuam vindo das tools. Sem correspondência, o atendimento admite que
+não sabe em vez de inventar.
+
+### Limitações e diagnóstico
+
+- Sem banco vetorial nem embeddings. A recuperação é por termo sobre um catálogo
+  pequeno e curado, o que dispensa índice vetorial e mantém o resultado
+  auditável.
+- O câmbio exige rede, e a AwesomeAPI limita a cota por IP quando não há token.
+- O modelo nunca decide aprovação, limite, score ou cotação.
+
+**Se as respostas parecerem sempre iguais**, a redação está falhando em silêncio
+e o texto determinístico está prevalecendo. Duas causas comuns, nesta ordem:
+
+1. **O modelo configurado não existe mais.** Provedores aposentam modelos, e a
+   chamada passa a falhar sem aviso. Confirme o que sua conta tem:
+
+   ```bash
+   curl -s https://api.groq.com/openai/v1/models \
+     -H "Authorization: Bearer $BANCO_AGIL_GROQ_API_KEY" | grep '"id"'
+   ```
+
+2. **O orçamento de tokens é curto para o modelo escolhido.** Modelos de
+   raciocínio, como os `gpt-oss`, gastam tokens pensando antes de produzir a
+   saída estruturada; com pouco espaço, devolvem geração vazia. Os 500 tokens do
+   `.env.example` são calibrados para o `qwen/qwen3.8-27b`.
 
 ## Funcionalidades implementadas
 
-- Perguntas sobre o atendimento são reconhecidas como dúvida, não como pedido
-  de operação, e respondidas pelo catálogo de conhecimento; assunto fora do
-  escopo é redirecionado com cordialidade.
-- Autenticação com 3 tentativas e encerramento cordial. O pedido feito antes de
-  autenticar fica guardado e é retomado assim que a autenticação conclui, sem
-  pedir de novo o que o cliente acabou de dizer.
-- Consulta de limite e solicitação de aumento com decisão por score; a
-  aprovação atualiza `clientes.csv`. O pedido é sempre situado em números: o
-  limite de hoje ao perguntar quanto o cliente quer, o passo de um valor ao
-  outro na aprovação e a comparação com o vigente na recusa.
-- Entrevista de crédito direta (pedido de score) ou após rejeição: o pedido de
-  score abre com uma mensagem curta que explica os cinco itens, o uso das
-  respostas e a ausência de garantia, e já faz a primeira pergunta; desistir no
-  meio descarta tudo. Reanálise quando houver limite pendente.
-- Estilo único em todos os agentes: no máximo três frases por resposta e sem
-  travessão. A regra vale por prompt, por limite de schema na redação e por
-  normalização determinística da saída do modelo.
-- Cotação de moedas por nome (`dólar`, `euro`, `iene` etc.) ou par (`EUR-USD`),
-  com tratamento humanizado de indisponibilidade e sem inventar valores. A
-  resposta traz valor e horário da atualização e convida a outro serviço.
-- Dúvidas sobre como aumentar limite ou score orientam a entrevista de crédito;
-  pedidos diretos de novo limite continuam sendo avaliados pelo score atual.
-- A triagem separa consultar limite, aumentar limite e atualizar score casando a
-  ação do cliente com o substantivo que ela atinge, e não por palavra solta:
-  `saber meu limite antes de pedir aumento` é consulta, `aumentar meu limite
-  porque o score melhorou` é aumento.
-- Histórico completo permanece visível enquanto a aba estiver aberta; somente
-  as seis mensagens mais recentes são enviadas ao grafo e ao Groq.
-- Encerramento (`encerrar`, `sair`, `finalizar`…) prioritário em qualquer nó.
-- Pergunta sobre o atendimento (`o que você pode fazer?`) respondida em
-  qualquer nó, exceto dentro da entrevista.
-- UI Streamlit em duas telas: a inicial centraliza o campo de mensagem e oferece
-  quatro atalhos (visualizar limite, solicitar aumento de crédito, entrevista
-  para atualizar crédito e cotação de moedas) que viram mensagem do cliente; uma
-  transição animada abre o chat. Concluído um serviço, o assistente convida a
-  continuar ou a encerrar; encerrado o atendimento, um botão inicia outro do
-  zero. Ao fim de cada serviço, um painel acima do campo oferece três
-  perguntas rápidas do especialista que respondeu, sem bloquear a digitação.
-  Sessão persistente, mascaramento de dados, tipografia Inter, atalho de volta
-  à tela inicial, fala do especialista direto na página e balão só para o
-  cliente, layout responsivo e temas claro/escuro consistentes.
-- Auditoria técnica consultável por sessão + métricas por chamada de LLM.
-- 584 testes (unitários, integração, E2E e evals) + `docs/TEST_PLAN.md` de
-  homologação.
+**Atendimento**
+
+- Autenticação em duas etapas, com três tentativas e encerramento cordial.
+- Consulta de limite e pedido de aumento decidido pela faixa de score. O pedido
+  é sempre situado em números: o limite de hoje ao perguntar quanto o cliente
+  quer, o passo de um valor ao outro na aprovação, a comparação com o vigente
+  na recusa.
+- Entrevista de crédito, pedida direto ou oferecida após uma recusa. Explica os
+  cinco itens antes de começar, recalcula o score e devolve ao crédito para
+  reanálise. Desistir no meio descarta tudo.
+- Cotação por nome da moeda (`dólar`, `euro`, `iene`) ou por par (`EUR-USD`),
+  com valor e horário da atualização, e indisponibilidade tratada sem inventar
+  número.
+- Dúvidas sobre o atendimento respondidas por um catálogo curado: por que um
+  pedido foi recusado, o que é score, se há cobrança, de onde vem a cotação.
+
+**Conversa**
+
+- Pergunta é reconhecida como dúvida, e não como pedido de operação.
+- O pedido feito antes de autenticar é retomado depois, sem repetir a pergunta.
+- Dúvida no meio de um passo é respondida sem descartar o que já foi coletado.
+- Encerrar funciona em qualquer momento, inclusive por despedida ("tchau",
+  "era só isso").
+- Troca de assunto no meio de um fluxo vai ao especialista certo no mesmo
+  turno, em vez de repetir a pergunta anterior.
+- Estilo único: no máximo três frases por resposta, sem travessão. A regra vale
+  por prompt, por limite de schema e por normalização da saída do modelo.
+
+**Interface**
+
+- Duas telas: a inicial com campo central e quatro atalhos; o chat abre com uma
+  transição animada.
+- Ao fim de cada serviço, três perguntas rápidas do especialista que respondeu,
+  acima do campo, sem bloquear a digitação.
+- Encerrado o atendimento, um botão inicia outro do zero.
+- CPF e nascimento mascarados na tela, temas claro e escuro, layout responsivo.
+
+**Qualidade**
+
+- Auditoria por sessão e métricas por chamada de LLM, sem PII.
+- 624 testes (unitários, integração, E2E e evals), todos offline, mais o
+  `docs/TEST_PLAN.md` de homologação manual.
 
 ## Desafios enfrentados e soluções
 
